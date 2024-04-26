@@ -52,5 +52,9 @@ pub fn main() !void {
     //     // c.SDL_Delay(170);
     // }
     var cpu = CPU.init();
-    cpu.load_and_run(&game_code);
+    cpu.load(&game_code);
+    cpu.reset();
+    cpu.run_with_callback(struct {
+        pub fn f(_: *CPU) void {}
+    }.f);
 }

@@ -52,7 +52,14 @@ pub const CPU = struct {
     }
 
     pub fn run(self: *Self) void {
+        self.run_with_callback(struct {
+            pub fn f(_: Self) void {}
+        }.f);
+    }
+
+    pub fn run_with_callback(self: *Self, comptime callback: fn (cpu: *Self) void) void {
         while (true) {
+            callback(self);
             const opscode = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
