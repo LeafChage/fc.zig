@@ -1,199 +1,15 @@
 const std = @import("std");
-
-const Codes: [std.math.maxInt(u8)]Code = init: {
-    const codes = [_]Code{
-        Code.init(0x69, CodeType.ADC, 2, AddressingMode.Immediate),
-        Code.init(0x65, CodeType.ADC, 3, AddressingMode.ZeroPage),
-        Code.init(0x75, CodeType.ADC, 4, AddressingMode.ZeroPageX),
-        Code.init(0x6D, CodeType.ADC, 4, AddressingMode.Absolute),
-        Code.init(0x7D, CodeType.ADC, 4, AddressingMode.AbsoluteX),
-        Code.init(0x79, CodeType.ADC, 4, AddressingMode.AbsoluteY),
-        Code.init(0x61, CodeType.ADC, 6, AddressingMode.IndirectX),
-        Code.init(0x71, CodeType.ADC, 5, AddressingMode.IndirectY),
-        Code.init(0x29, CodeType.AND, 2, AddressingMode.Immediate),
-        Code.init(0x25, CodeType.AND, 3, AddressingMode.ZeroPage),
-        Code.init(0x35, CodeType.AND, 4, AddressingMode.ZeroPageX),
-        Code.init(0x2D, CodeType.AND, 4, AddressingMode.Absolute),
-        Code.init(0x3D, CodeType.AND, 4, AddressingMode.AbsoluteX),
-        Code.init(0x39, CodeType.AND, 4, AddressingMode.AbsoluteY),
-        Code.init(0x21, CodeType.AND, 6, AddressingMode.IndirectX),
-        Code.init(0x31, CodeType.AND, 5, AddressingMode.IndirectY),
-        Code.init(0x0A, CodeType.ASL, 2, AddressingMode.None), // Accumulator
-        Code.init(0x06, CodeType.ASL, 5, AddressingMode.ZeroPage),
-        Code.init(0x16, CodeType.ASL, 6, AddressingMode.ZeroPageX),
-        Code.init(0x0E, CodeType.ASL, 6, AddressingMode.Absolute),
-        Code.init(0x1E, CodeType.ASL, 7, AddressingMode.AbsoluteX),
-        Code.init(0x90, CodeType.BCC, 2, AddressingMode.None), // Relative
-        Code.init(0xB0, CodeType.BCS, 2, AddressingMode.None), // Relative
-        Code.init(0xF0, CodeType.BEQ, 2, AddressingMode.None), // Relative
-        Code.init(0x24, CodeType.BIT, 3, AddressingMode.ZeroPage),
-        Code.init(0x2C, CodeType.BIT, 4, AddressingMode.Absolute),
-        Code.init(0x30, CodeType.BMI, 2, AddressingMode.None), // Relative
-        Code.init(0xD0, CodeType.BNE, 2, AddressingMode.None), // Relative
-        Code.init(0x10, CodeType.BPL, 2, AddressingMode.None), // Relative
-        Code.init(0x00, CodeType.BRK, 7, AddressingMode.None), // implied
-        Code.init(0x50, CodeType.BVC, 2, AddressingMode.None), // Relative
-        Code.init(0x70, CodeType.BVS, 2, AddressingMode.None), // Relative
-        Code.init(0x18, CodeType.CLC, 2, AddressingMode.None), // implied
-        Code.init(0xD8, CodeType.CLD, 2, AddressingMode.None), // implied
-        Code.init(0x58, CodeType.CLI, 2, AddressingMode.None), // implied
-        Code.init(0xB8, CodeType.CLV, 2, AddressingMode.None), // implied
-        Code.init(0xC9, CodeType.CMP, 2, AddressingMode.Immediate),
-        Code.init(0xC5, CodeType.CMP, 2, AddressingMode.ZeroPage),
-        Code.init(0xD5, CodeType.CMP, 4, AddressingMode.ZeroPageX),
-        Code.init(0xCD, CodeType.CMP, 4, AddressingMode.Absolute),
-        Code.init(0xDD, CodeType.CMP, 4, AddressingMode.AbsoluteX),
-        Code.init(0xD9, CodeType.CMP, 4, AddressingMode.AbsoluteY),
-        Code.init(0xC1, CodeType.CMP, 6, AddressingMode.IndirectX),
-        Code.init(0xD1, CodeType.CMP, 5, AddressingMode.IndirectY),
-        //
-        // Code.init(0x, CodeType.CPX, , , AddressingMode.),
-        // Code.init(0x, CodeType.CPX, , , AddressingMode.),
-        // Code.init(0x, CodeType.CPX, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.CPY, , , AddressingMode.),
-        // Code.init(0x, CodeType.CPY, , , AddressingMode.),
-        // Code.init(0x, CodeType.CPY, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.DEC, , , AddressingMode.),
-        // Code.init(0x, CodeType.DEC, , , AddressingMode.),
-        // Code.init(0x, CodeType.DEC, , , AddressingMode.),
-        // Code.init(0x, CodeType.DEC, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.DEX, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.DEY, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        // Code.init(0x, CodeType.EOR, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.INC, , , AddressingMode.),
-        // Code.init(0x, CodeType.INC, , , AddressingMode.),
-        // Code.init(0x, CodeType.INC, , , AddressingMode.),
-        // Code.init(0x, CodeType.INC, , , AddressingMode.),
-
-        Code.init(0xE8, CodeType.INX, 2, AddressingMode.None),
-        Code.init(0xC8, CodeType.INY, 2, AddressingMode.None),
-        //
-        // Code.init(0x, CodeType.JMP, , , AddressingMode.),
-        // Code.init(0x, CodeType.JMP, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.JSR, , , AddressingMode.),
-        //
-        Code.init(0xA9, CodeType.LDA, 2, AddressingMode.Immediate),
-        Code.init(0xA5, CodeType.LDA, 3, AddressingMode.ZeroPage),
-        Code.init(0xB5, CodeType.LDA, 4, AddressingMode.ZeroPageY),
-        Code.init(0xAD, CodeType.LDA, 4, AddressingMode.Absolute),
-        Code.init(0xBD, CodeType.LDA, 4, AddressingMode.AbsoluteX),
-        Code.init(0xB9, CodeType.LDA, 4, AddressingMode.AbsoluteY),
-        Code.init(0xA1, CodeType.LDA, 6, AddressingMode.IndirectX),
-        Code.init(0xB1, CodeType.LDA, 5, AddressingMode.IndirectY),
-
-        Code.init(0xA2, CodeType.LDX, 2, AddressingMode.Immediate),
-        Code.init(0xA6, CodeType.LDX, 3, AddressingMode.ZeroPage),
-        Code.init(0xB6, CodeType.LDX, 4, AddressingMode.ZeroPageY),
-        Code.init(0xAE, CodeType.LDX, 4, AddressingMode.Absolute),
-        Code.init(0xBE, CodeType.LDX, 4, AddressingMode.AbsoluteY),
-
-        Code.init(0xA0, CodeType.LDY, 2, AddressingMode.Immediate),
-        Code.init(0xA4, CodeType.LDY, 3, AddressingMode.ZeroPage),
-        Code.init(0xB4, CodeType.LDY, 4, AddressingMode.ZeroPageX),
-        Code.init(0xAC, CodeType.LDY, 4, AddressingMode.Absolute),
-        Code.init(0xBC, CodeType.LDY, 4, AddressingMode.AbsoluteX),
-
-        // Code.init(0x, CodeType.LSR, , , AddressingMode.),
-        // Code.init(0x, CodeType.LSR, , , AddressingMode.),
-        // Code.init(0x, CodeType.LSR, , , AddressingMode.),
-        // Code.init(0x, CodeType.LSR, , , AddressingMode.),
-        // Code.init(0x, CodeType.LSR, , , AddressingMode.),
-        //
-        Code.init(0xEA, CodeType.NOP, 2, AddressingMode.None),
-        //
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        // Code.init(0x, CodeType.ORA, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.PHA, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.PHP, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.PLA, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.PLP, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.ROL, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROL, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROL, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROL, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROL, , , AddressingMode.),
-        //
-        // Code.init(0x, CodeType.ROR, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROR, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROR, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROR, , , AddressingMode.),
-        // Code.init(0x, CodeType.ROR, , , AddressingMode.),
-        Code.init(0x40, CodeType.RTI, 6, AddressingMode.None), // implied
-        Code.init(0x60, CodeType.RTS, 6, AddressingMode.None), // implied
-
-        Code.init(0xE9, CodeType.SBC, 2, AddressingMode.Immediate),
-        Code.init(0xE5, CodeType.SBC, 3, AddressingMode.ZeroPage),
-        Code.init(0xF5, CodeType.SBC, 4, AddressingMode.ZeroPageX),
-        Code.init(0xED, CodeType.SBC, 4, AddressingMode.Absolute),
-        Code.init(0xFD, CodeType.SBC, 4, AddressingMode.AbsoluteX),
-        Code.init(0xF9, CodeType.SBC, 4, AddressingMode.AbsoluteY),
-        Code.init(0xE1, CodeType.SBC, 6, AddressingMode.IndirectX),
-        Code.init(0xF1, CodeType.SBC, 5, AddressingMode.IndirectY),
-
-        Code.init(0x38, CodeType.SEC, 2, AddressingMode.None),
-        Code.init(0xF8, CodeType.SED, 2, AddressingMode.None),
-        Code.init(0x78, CodeType.SEI, 2, AddressingMode.None),
-
-        Code.init(0x85, CodeType.STA, 3, AddressingMode.ZeroPage),
-        Code.init(0x95, CodeType.STA, 4, AddressingMode.ZeroPageX),
-        Code.init(0x8D, CodeType.STA, 4, AddressingMode.Absolute),
-        Code.init(0x9D, CodeType.STA, 5, AddressingMode.AbsoluteX),
-        Code.init(0x99, CodeType.STA, 5, AddressingMode.AbsoluteY),
-        Code.init(0x81, CodeType.STA, 6, AddressingMode.IndirectX),
-        Code.init(0x91, CodeType.STA, 6, AddressingMode.IndirectY),
-
-        Code.init(0x86, CodeType.STX, 3, AddressingMode.ZeroPage),
-        Code.init(0x96, CodeType.STX, 4, AddressingMode.ZeroPageY),
-        Code.init(0x8E, CodeType.STX, 4, AddressingMode.Absolute),
-
-        Code.init(0x84, CodeType.STY, 3, AddressingMode.ZeroPage),
-        Code.init(0x94, CodeType.STY, 4, AddressingMode.ZeroPageX),
-        Code.init(0x8C, CodeType.STY, 4, AddressingMode.Absolute),
-        Code.init(0xAA, CodeType.TAX, 2, AddressingMode.None), // implied
-        Code.init(0xA8, CodeType.TAY, 2, AddressingMode.None), // implied
-        Code.init(0xBA, CodeType.TSX, 2, AddressingMode.None), // implied
-        Code.init(0x8A, CodeType.TXA, 2, AddressingMode.None), // implied
-        Code.init(0x9A, CodeType.TXS, 2, AddressingMode.None), // implied
-        Code.init(0x98, CodeType.TYA, 2, AddressingMode.None), // implied
-    };
-
-    var ordered_codes = [_]Code{Code.init(0x00, CodeType.BRK, 0, AddressingMode.None)} ** std.math.maxInt(u8);
-    for (codes) |code| {
-        ordered_codes[code.opecode] = code;
-    }
-    break :init ordered_codes;
-};
+const _code = @import("./code.zig");
+const Codes = _code.Codes;
+const CodeType = _code.CodeType;
+const AddressingMode = _code.AddressingMode;
 
 pub const CPU = struct {
     register_a: u8,
     register_x: u8,
     register_y: u8,
     status: u8,
+    stack_pointer: u8,
     program_counter: u16,
 
     memory: [0xFFFF]u8,
@@ -208,6 +24,7 @@ pub const CPU = struct {
             .register_y = 0,
             .status = 0,
             .program_counter = 0,
+            .stack_pointer = 0xFF,
             .memory = std.mem.zeroes([0xFFFF]u8),
         };
     }
@@ -220,10 +37,12 @@ pub const CPU = struct {
     }
 
     pub fn load(self: *Self, program: []const u8) void {
-        const from = ProgramMemoryStartIndex;
+        // const from = ProgramMemoryStartIndex;
+        const from = 0x0600;
         const to = from + program.len;
         @memcpy(self.memory[from..to], program);
-        self.mem_write_u16(0xFFFC, 0x8000);
+        // self.mem_write_u16(0xFFFC, 0x8000);
+        self.mem_write_u16(0xFFFC, from);
     }
 
     pub fn load_and_run(self: *Self, program: []const u8) void {
@@ -238,24 +57,71 @@ pub const CPU = struct {
             self.program_counter += 1;
 
             const code = Codes[opscode];
+            std.log.debug("code {} {}", .{ opscode, code.t });
+
             switch (code.t) {
-                CodeType.LDA => self.lda(code.mode),
-                CodeType.STA => self.sta(code.mode),
-                CodeType.TAX => self.tax(),
-                CodeType.INX => self.inx(),
-                CodeType.INY => self.iny(),
-                CodeType.BRK => return,
-                CodeType.LDX => self.ldx(code.mode),
-                CodeType.LDY => self.ldy(code.mode),
-                CodeType.NOP => {},
-                CodeType.SEC => self.sec(),
-                CodeType.SED => self.sed(),
-                CodeType.SEI => self.sei(),
+                CodeType.LDA => {
+                    self.lda(code.mode);
+                    self.program_counter += code.mode.bytes();
+                },
+                CodeType.STA => {
+                    self.sta(code.mode);
+                    self.program_counter += code.mode.bytes();
+                },
+                CodeType.STX => {
+                    self.stx(code.mode);
+                    self.program_counter += code.mode.bytes();
+                },
+                CodeType.STY => {
+                    self.sty(code.mode);
+                    self.program_counter += code.mode.bytes();
+                },
+                CodeType.TAX => {
+                    self.tax();
+                },
+                CodeType.INX => {
+                    self.inx();
+                },
+                CodeType.INY => {
+                    self.iny();
+                },
+                CodeType.BRK => {
+                    return;
+                },
+                CodeType.LDX => {
+                    self.ldx(code.mode);
+                    self.program_counter += code.mode.bytes();
+                },
+                CodeType.LDY => {
+                    self.ldy(code.mode);
+                    self.program_counter += code.mode.bytes();
+                },
+                CodeType.NOP => {
+                    // do nothing
+                },
+                CodeType.SEC => {
+                    self.sec();
+                },
+                CodeType.SED => {
+                    self.sed();
+                },
+                CodeType.SEI => {
+                    self.sei();
+                },
+                CodeType.JSR => {
+                    self.jsr(code.mode);
+                },
+                CodeType.RTS => {
+                    self.rts();
+                },
                 else => {
-                    std.debug.panic("I don't know the opecode: {}", .{opscode});
+                    std.debug.panic("I don't know the opecode: 0x{x} {} {}", .{
+                        opscode,
+                        code.t,
+                        code.mode,
+                    });
                 },
             }
-            self.program_counter += code.mode.bytes();
         }
     }
 
@@ -409,6 +275,42 @@ pub const CPU = struct {
         const addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
     }
+    test "sta" {
+        var cpu = CPU.init();
+        cpu.load(&[_]u8{ 0x85, 0x10 });
+        cpu.reset();
+        cpu.register_a = 0x55;
+        cpu.run();
+        try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
+    }
+
+    // store X to memory
+    fn stx(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_x);
+    }
+    test "stx" {
+        var cpu = CPU.init();
+        cpu.load(&[_]u8{ 0x86, 0x10 });
+        cpu.reset();
+        cpu.register_x = 0x55;
+        cpu.run();
+        try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
+    }
+
+    // store Y to memory
+    fn sty(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_y);
+    }
+    test "sty" {
+        var cpu = CPU.init();
+        cpu.load(&[_]u8{ 0x84, 0x10 });
+        cpu.reset();
+        cpu.register_y = 0x55;
+        cpu.run();
+        try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
+    }
 
     // set carry flag
     fn sec(self: *Self) void {
@@ -438,6 +340,27 @@ pub const CPU = struct {
         var cpu = CPU.init();
         cpu.load_and_run(&[_]u8{ 0x78, 0x00 });
         try std.testing.expectEqual(cpu.status & 0b0010_0000, 0b0010_0000);
+    }
+
+    fn jsr(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const p = self.program_counter - 1;
+        const lower: u8 = @intCast(p & 0x00FF);
+        const upper: u8 = @intCast(p >> 8);
+        // little endian
+        self.stack_push(lower);
+        self.stack_push(upper);
+
+        std.log.debug("JSR: push: 0x{x}, jump to: 0x{x} ", .{ p, addr });
+        self.program_counter = addr;
+    }
+
+    fn rts(self: *Self) void {
+        const upper = @as(u16, self.stack_pop());
+        const lower = @as(u16, self.stack_pop());
+        const addr = (upper << 8) | lower;
+        std.log.debug("RTS: return to: 0x{x} ", .{addr});
+        self.program_counter = addr;
     }
 
     fn update_zero_and_negative_flag(self: *Self, result: u8) void {
@@ -477,6 +400,21 @@ pub const CPU = struct {
         self.mem_write(pos, lower);
         self.mem_write(pos + 1, upper);
     }
+
+    ///
+    /// control stack
+    ///
+    fn stack_push(self: *Self, data: u8) void {
+        self.stack_pointer -= 1;
+        const p = 0x0100 & @as(u16, self.stack_pointer);
+        return self.mem_write(p, data);
+    }
+
+    fn stack_pop(self: *Self) u8 {
+        const p = 0x0100 & @as(u16, self.stack_pointer);
+        self.stack_pointer += 1;
+        return self.mem_read(p);
+    }
 };
 
 test "lda immediate" {
@@ -514,108 +452,3 @@ test "working_together" {
     cpu.load_and_run(&[_]u8{ 0xA9, 0xc0, 0xAA, 0xE8, 0x00 });
     try std.testing.expectEqual(cpu.register_x, 0xC1);
 }
-
-const AddressingMode = enum {
-    Immediate,
-    ZeroPage,
-    ZeroPageX,
-    ZeroPageY,
-    Absolute,
-    AbsoluteX,
-    AbsoluteY,
-    IndirectX,
-    IndirectY,
-    None,
-
-    const Self = @This();
-    pub fn bytes(self: Self) u16 {
-        return switch (self) {
-            AddressingMode.Immediate => 1,
-            AddressingMode.Absolute => 2,
-            AddressingMode.AbsoluteX => 2,
-            AddressingMode.AbsoluteY => 2,
-            AddressingMode.ZeroPage => 1,
-            AddressingMode.ZeroPageX => 1,
-            AddressingMode.ZeroPageY => 1,
-            AddressingMode.IndirectX => 2,
-            AddressingMode.IndirectY => 2,
-            AddressingMode.None => 0,
-        };
-    }
-};
-
-const CodeType = enum {
-    ADC,
-    AND,
-    ASL,
-    BCC,
-    BCS,
-    BEQ,
-    BIT,
-    BMI,
-    BNE,
-    BPL,
-    BRK,
-    BVC,
-    BVS,
-    CLC,
-    CLD,
-    CLI,
-    CLV,
-    CMP,
-    CPX,
-    CPY,
-    DEC,
-    DEX,
-    DEY,
-    EOR,
-    INC,
-    INX,
-    INY,
-    JMP,
-    JSR,
-    LDA,
-    LDX,
-    LDY,
-    LSR,
-    NOP,
-    ORA,
-    PHA,
-    PHP,
-    PLA,
-    PLP,
-    ROL,
-    ROR,
-    RTI,
-    RTS,
-    SBC,
-    SEC,
-    SED,
-    SEI,
-    STA,
-    STX,
-    STY,
-    TAX,
-    TAY,
-    TSX,
-    TXA,
-    TXS,
-    TYA,
-};
-
-const Code = struct {
-    opecode: u8,
-    t: CodeType,
-    cycle: usize,
-    mode: AddressingMode,
-
-    const Self = @This();
-    pub fn init(opecode: u8, t: CodeType, cycle: u8, mode: AddressingMode) Self {
-        return Self{
-            .t = t,
-            .opecode = opecode,
-            .cycle = cycle,
-            .mode = mode,
-        };
-    }
-};

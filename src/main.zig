@@ -4,9 +4,7 @@ const c = @cImport(@cInclude("SDL2/SDL.h"));
 const CPU = @import("./cpu.zig").CPU;
 
 const game_code = [_]u8{
-    //
     0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02, 0x85,
-    //
     0x02, 0xa9, 0x04, 0x85, 0x03, 0xa9, 0x11, 0x85, 0x10, 0xa9, 0x10, 0x85, 0x12, 0xa9, 0x0f, 0x85,
     0x14, 0xa9, 0x04, 0x85, 0x11, 0x85, 0x13, 0x85, 0x15, 0x60, 0xa5, 0xfe, 0x85, 0x00, 0xa5, 0xfe,
     0x29, 0x03, 0x18, 0x69, 0x02, 0x85, 0x01, 0x60, 0x20, 0x4d, 0x06, 0x20, 0x8d, 0x06, 0x20, 0xc3,
@@ -29,31 +27,30 @@ const game_code = [_]u8{
 };
 
 pub fn main() !void {
-    if (c.SDL_Init(c.SDL_INIT_EVERYTHING) != 0) {
-        c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
-        return error.SDLInitializationFailed;
-    }
-    defer c.SDL_Quit();
-
-    const windowId = c.SDL_CreateWindow("Game", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, 1000, 1000, 0) orelse {
-        c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
-        return error.SDLInitializationFailed;
-    };
-    defer c.SDL_DestroyWindow(windowId);
-
-    while (true) {
-        var event: c.SDL_Event = undefined;
-        if (c.SDL_PollEvent(&event) != 0) {
-            switch (event.type) {
-                c.SDL_QUIT => {
-                    break;
-                },
-                else => {},
-            }
-        }
-        // c.SDL_Delay(170);
-    }
-    // const cpu = CPU.init();
-    // cpu.load(game_code);
-    // cpu.reset();
+    // if (c.SDL_Init(c.SDL_INIT_EVERYTHING) != 0) {
+    //     c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
+    //     return error.SDLInitializationFailed;
+    // }
+    // defer c.SDL_Quit();
+    //
+    // const windowId = c.SDL_CreateWindow("Game", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, 1000, 1000, 0) orelse {
+    //     c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
+    //     return error.SDLInitializationFailed;
+    // };
+    // defer c.SDL_DestroyWindow(windowId);
+    //
+    // while (true) {
+    //     var event: c.SDL_Event = undefined;
+    //     if (c.SDL_PollEvent(&event) != 0) {
+    //         switch (event.type) {
+    //             c.SDL_QUIT => {
+    //                 break;
+    //             },
+    //             else => {},
+    //         }
+    //     }
+    //     // c.SDL_Delay(170);
+    // }
+    var cpu = CPU.init();
+    cpu.load_and_run(&game_code);
 }
