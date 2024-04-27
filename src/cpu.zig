@@ -4,6 +4,27 @@ const Codes = _code.Codes;
 const CodeType = _code.CodeType;
 const AddressingMode = _code.AddressingMode;
 
+pub const CPUCallback = struct {
+    ptr: *anyopaque,
+    impl: *const Interface,
+
+    pub const Interface = struct {
+        call: *const fn (ctx: *anyopaque, cpu: *CPU) void,
+    };
+
+    pub fn run(self: @This(), cpu: *CPU) void {
+        self.impl.call(self.ptr, cpu);
+    }
+};
+
+const EmptyAction = struct {
+    pub fn call(_: *anyopaque, _: *CPU) void {}
+
+    pub fn callback(self: *@This()) CPUCallback {
+        return CPUCallback{ .ptr = @ptrCast(self), .impl = &.{ .call = call } };
+    }
+};
+
 pub const CPU = struct {
     register_a: u8,
     register_x: u8,
@@ -52,14 +73,13 @@ pub const CPU = struct {
     }
 
     pub fn run(self: *Self) void {
-        self.run_with_callback(struct {
-            pub fn f(_: Self) void {}
-        }.f);
+        var action = EmptyAction{};
+        self.run_with_callback(action.callback());
     }
 
-    pub fn run_with_callback(self: *Self, comptime callback: fn (cpu: *Self) void) void {
+    pub fn run_with_callback(self: *Self, callback: CPUCallback) void {
         while (true) {
-            callback(self);
+            callback.run(self);
             const opscode = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
@@ -351,7 +371,7 @@ pub const CPU = struct {
 
     fn jsr(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
-        const p = self.program_counter - 1;
+        const p = self.program_counter;
         const lower: u8 = @intCast(p & 0x00FF);
         const upper: u8 = @intCast(p >> 8);
         // little endian
@@ -367,7 +387,7 @@ pub const CPU = struct {
         const lower = @as(u16, self.stack_pop());
         const addr = (upper << 8) | lower;
         std.log.debug("RTS: return to: 0x{x} ", .{addr});
-        self.program_counter = addr;
+        self.program_counter = addr + 1;
     }
 
     fn update_zero_and_negative_flag(self: *Self, result: u8) void {
@@ -387,7 +407,7 @@ pub const CPU = struct {
     ///
     /// control memory
     ///
-    fn mem_read(self: Self, addr: u16) u8 {
+    pub fn mem_read(self: Self, addr: u16) u8 {
         return self.memory[addr];
     }
 
@@ -397,7 +417,7 @@ pub const CPU = struct {
         return (upper << 8) | lower;
     }
 
-    fn mem_write(self: *Self, addr: u16, data: u8) void {
+    pub fn mem_write(self: *Self, addr: u16, data: u8) void {
         self.memory[addr] = data;
     }
 
