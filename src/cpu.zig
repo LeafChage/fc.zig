@@ -60,7 +60,19 @@ pub const CPU = struct {
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
 
+    fn show_program(program: []const u8) void {
+        var pc: u16 = 0;
+        while (program.len > pc) {
+            const opscode = program[pc];
+            const code = Codes[opscode];
+            std.log.debug("0x{x:0>4} 0x{x:0>2} {} {}", .{ pc, opscode, code.t, code.mode });
+            pc += 1 + code.mode.bytes();
+        }
+    }
+
     pub fn load(self: *Self, program: []const u8) void {
+        CPU.show_program(program);
+
         // const from = ProgramMemoryStartIndex;
         const from = 0x0600;
         const to = from + program.len;
