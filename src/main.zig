@@ -70,10 +70,11 @@ pub fn main() !void {
         pub fn call(ctx: *anyopaque, cpu: *CPU) void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             handle_user_input(cpu);
-            // v.mem_write(0xFE, 15);
+
+            cpu.mem_write(0xFE, 15);
             if (read_screen_state(cpu, &self.state)) {
-                if (sdl.SDL_UpdateTexture(self.texture, null, &self.state, 32 * 3) != 0 and
-                    sdl.SDL_RenderCopy(self.renderer, self.texture, null, null) != 0)
+                if (sdl.SDL_UpdateTexture(self.texture, null, &self.state, 32 * 3) == 0 and
+                    sdl.SDL_RenderCopy(self.renderer, self.texture, null, null) == 0)
                 {
                     sdl.SDL_RenderPresent(self.renderer);
                 }
@@ -160,5 +161,18 @@ fn read_screen_state(cpu: *CPU, frame: *[32 * 3 * 32]u8) bool {
         }
         frame_idx += 3;
     }
+
+    // // rendering test
+    // frame_idx = 0;
+    // for (0x0200..0x0600) |_| {
+    //     const color_idx = std.crypto.random.intRangeAtMost(u8, 0, 14);
+    //     const rgb = color(color_idx).rgb();
+    //     frame[frame_idx] = rgb[0];
+    //     frame[frame_idx + 1] = rgb[1];
+    //     frame[frame_idx + 2] = rgb[2];
+    //     update = true;
+    //     frame_idx += 3;
+    // }
+
     return update;
 }

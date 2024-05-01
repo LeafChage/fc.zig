@@ -125,10 +125,10 @@ pub const Codes: [std.math.maxInt(u8)]Code = init: {
         Code.init(0x68, CodeType.PLA, 4, AddressingMode.None), //implied
         Code.init(0x28, CodeType.PLP, 4, AddressingMode.None), //implied
         Code.init(0x2A, CodeType.ROL, 2, AddressingMode.None), // Accumulator
-        Code.init(0x26, CodeType.ROL, 5, AddressingMode.ZeroPage),
-        Code.init(0x36, CodeType.ROL, 6, AddressingMode.ZeroPageX),
-        Code.init(0x2E, CodeType.ROL, 6, AddressingMode.Absolute),
-        Code.init(0x3E, CodeType.ROL, 7, AddressingMode.AbsoluteX),
+        // Code.init(0x26, CodeType.ROL, 5, AddressingMode.ZeroPage),
+        // Code.init(0x36, CodeType.ROL, 6, AddressingMode.ZeroPageX),
+        // Code.init(0x2E, CodeType.ROL, 6, AddressingMode.Absolute),
+        // Code.init(0x3E, CodeType.ROL, 7, AddressingMode.AbsoluteX),
         Code.init(0x6A, CodeType.ROR, 2, AddressingMode.None), // Accumulator
         Code.init(0x66, CodeType.ROR, 5, AddressingMode.ZeroPage),
         Code.init(0x75, CodeType.ROR, 6, AddressingMode.ZeroPageX),
