@@ -164,9 +164,9 @@ fn read_screen_state(cpu: *CPU, frame: *[32 * 3 * 32]u8) bool {
 
     // // rendering test
     // frame_idx = 0;
-    // for (0x0200..0x0600) |_| {
-    //     const color_idx = std.crypto.random.intRangeAtMost(u8, 0, 14);
-    //     const rgb = color(color_idx).rgb();
+    // for (0x0200..0x0600, 0..) |_, i| {
+    //     const color_idx = i % 16;
+    //     const rgb = color(@intCast(color_idx)).rgb();
     //     frame[frame_idx] = rgb[0];
     //     frame[frame_idx + 1] = rgb[1];
     //     frame[frame_idx + 2] = rgb[2];

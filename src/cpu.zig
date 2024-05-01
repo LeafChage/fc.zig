@@ -141,7 +141,7 @@ pub const CPU = struct {
                 self.program_counter += code.mode.bytes();
             },
             CodeType.NOP => {
-                std.log.warn("NOP", .{});
+                std.log.warn("NOP: 0x{x}", .{opscode});
             },
             CodeType.SEC => {
                 self.sec();
@@ -163,6 +163,10 @@ pub const CPU = struct {
             },
             CodeType.CLV => {
                 self.clv();
+            },
+            CodeType.BIT => {
+                self.bit(code.mode);
+                self.program_counter += code.mode.bytes();
             },
             CodeType.JSR => {
                 self.jsr();
@@ -299,9 +303,6 @@ pub const CPU = struct {
         self.status.overflow = (value ^ sum) & (sum ^ self.register_a) & 0x80 != 0;
 
         self.register_a = @intCast(sum & 0x00FF);
-    }
-    test "adc" {
-        // @panic("not implemented");
     }
 
     // load to A
@@ -616,6 +617,17 @@ pub const CPU = struct {
         try std.testing.expect(!cpu.status.overflow);
     }
 
+    fn bit(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const data = self.mem_read(addr);
+        const result = self.register_a & data;
+        if (result == 0) {
+            self.status.zero = true;
+        }
+        self.status.negative = data & 0b1000_0000 == 0b1000_0000;
+        self.status.overflow = data & 0b0100_0000 == 0b0100_0000;
+    }
+
     fn jsr(self: *Self) void {
         // JSR is with absolute operand which has two bites, and this tries to push address before next code
         self.stack_push_u16(self.program_counter + 1);
@@ -634,7 +646,7 @@ pub const CPU = struct {
     fn branch(self: *Self, flag: bool) void {
         if (flag) {
             const offset: i8 = @bitCast(self.mem_read(self.program_counter));
-            const addr = @as(isize, self.program_counter) + @as(isize, offset) - 1;
+            const addr = @as(isize, self.program_counter + 1) + @as(isize, offset);
             std.log.debug("Branch: offset 0x{x}, jump to: 0x{x}", .{ offset, addr });
             self.program_counter = @as(u16, @intCast(addr));
         } else {
@@ -671,91 +683,91 @@ pub const CPU = struct {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x90, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.carry = false;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "bcc jump -10" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x90, @bitCast(@as(i8, -0x05)) });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.carry = false;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current - 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next - 0x05, cpu.program_counter);
     }
     test "bcc no jump" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x90, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.carry = true;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 2, cpu.program_counter);
+        try std.testing.expectEqual(next, cpu.program_counter);
     }
     test "bcs jump" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0xB0, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.carry = true;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "beq jump +5" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0xF0, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.zero = true;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "bne jump +5" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0xD0, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.zero = false;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "bvc jump +5" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x50, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.overflow = false;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "bvs jump +5" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x70, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.overflow = true;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "bpl jump +5" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x10, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.negative = false;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
     test "bmi jump +5" {
         var cpu = CPU.init();
         cpu.load(&[_]u8{ 0x30, 0x05 });
         cpu.reset();
-        const current = cpu.program_counter;
+        const next = cpu.program_counter + 2;
         cpu.status.negative = true;
         _ = cpu.single_run();
-        try std.testing.expectEqual(current + 0x05, cpu.program_counter);
+        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
     }
 
     fn rts(self: *Self) void {
