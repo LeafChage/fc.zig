@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const StatusFlag = struct {
     negative: bool,
     overflow: bool,
@@ -44,6 +46,24 @@ pub const StatusFlag = struct {
             .zero = b | Mask.zero == Mask.zero,
             .carry = b | Mask.carry == Mask.carry,
         };
+    }
+
+    pub fn format(
+        status: StatusFlag,
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        return writer.print("n: {}, o: {}, r: {}, b: {}, d: {}, i: {}, z: {}, c:{}", .{
+            @as(u8, if (status.negative) 1 else 0),
+            @as(u8, if (status.overflow) 1 else 0),
+            @as(u8, if (status.reserved) 1 else 0),
+            @as(u8, if (status.break_cmd) 1 else 0),
+            @as(u8, if (status.decimal) 1 else 0),
+            @as(u8, if (status.interrupt) 1 else 0),
+            @as(u8, if (status.zero) 1 else 0),
+            @as(u8, if (status.carry) 1 else 0),
+        });
     }
 
     pub fn raw(self: Self) u8 {

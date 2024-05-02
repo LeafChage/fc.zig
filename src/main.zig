@@ -4,6 +4,7 @@ const mysdl = @import("./sdl.zig");
 const CPU = @import("./cpu.zig").CPU;
 const CPUCallback = @import("./cpu.zig").CPUCallback;
 
+// ref: https://gist.github.com/wkjagt/9043907
 const game_code = [_]u8{
     0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02, 0x85,
     0x02, 0xa9, 0x04, 0x85, 0x03, 0xa9, 0x11, 0x85, 0x10, 0xa9, 0x10, 0x85, 0x12, 0xa9, 0x0f, 0x85,
@@ -71,7 +72,7 @@ pub fn main() !void {
             const self: *@This() = @ptrCast(@alignCast(ctx));
             handle_user_input(cpu);
 
-            cpu.mem_write(0xFE, 15);
+            cpu.mem_write(0xFE, std.crypto.random.intRangeAtMost(u8, 1, 16));
             if (read_screen_state(cpu, &self.state)) {
                 if (sdl.SDL_UpdateTexture(self.texture, null, &self.state, 32 * 3) == 0 and
                     sdl.SDL_RenderCopy(self.renderer, self.texture, null, null) == 0)
@@ -79,7 +80,7 @@ pub fn main() !void {
                     sdl.SDL_RenderPresent(self.renderer);
                 }
             }
-            sdl.SDL_Delay(170);
+            // sdl.SDL_Delay(170);
         }
 
         pub fn callback(self: *@This()) CPUCallback {
