@@ -5,6 +5,7 @@ const Codes = _code.Codes;
 const CodeType = _code.CodeType;
 const AddressingMode = _code.AddressingMode;
 const StatusFlag = @import("./status_flag.zig").StatusFlag;
+const Mem = @import("./bus.zig").Mem;
 
 pub const CPUCallback = struct {
     ptr: *anyopaque,
@@ -35,14 +36,14 @@ pub const CPU = struct {
     stack_pointer: u8,
     program_counter: u16,
 
-    memory: [0xFFFF + 1]u8,
+    bus: Mem,
     // program ROM 0x8000 ~ 0xFFFF
 
     // const ProgramMemoryStartIndex = 0x8000;
     const ProgramMemoryStartIndex = 0x0600;
 
     const Self = @This();
-    pub fn init() Self {
+    pub fn init(bus: Mem) Self {
         return CPU{
             .register_a = 0,
             .register_x = 0,
@@ -50,7 +51,7 @@ pub const CPU = struct {
             .status = StatusFlag.init(),
             .program_counter = 0,
             .stack_pointer = 0xFF,
-            .memory = std.mem.zeroes([0xFFFF + 1]u8),
+            .bus = bus,
         };
     }
 
@@ -265,20 +266,6 @@ pub const CPU = struct {
         }
         std.log.debug("A: 0x{x}, X: 0x{x}, Y: 0x{x}, PC: 0x{x}, SP: 0x{x}", .{ self.register_a, self.register_x, self.register_y, self.program_counter, self.stack_pointer });
         std.log.debug("{}", .{self.status});
-        std.log.debug("head: {} {}", .{ self.memory[0x10], self.memory[0x11] });
-        std.log.debug("length: {}", .{self.memory[0x03]});
-        std.log.debug("apple: {} {}", .{ self.memory[0x00], self.memory[0x01] });
-        // for (0..4) |i| {
-        //     std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
-        // }
-        // std.log.debug("==stack==", .{});
-        // for (4..8) |i| {
-        //     std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
-        // }
-        // std.log.debug("==display==", .{});
-        // for (8..22) |i| {
-        //     std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
-        // }
     }
 
     // for test
@@ -1277,27 +1264,26 @@ pub const CPU = struct {
     }
 
     ///
-    /// control memory
+    /// implements Mem
     ///
     pub fn mem_read(self: Self, addr: u16) u8 {
-        return self.memory[addr];
+        return self.bus.mem_read(addr);
     }
 
-    fn mem_read_u16(self: Self, pos: u16) u16 {
-        const lower = @as(u16, self.mem_read(pos));
-        const upper = @as(u16, self.mem_read(pos + 1));
-        return (upper << 8) | lower;
+    pub fn mem_read_u16(self: Self, pos: u16) u16 {
+        return self.bus.mem_read_u16(pos);
     }
 
     pub fn mem_write(self: *Self, addr: u16, data: u8) void {
-        self.memory[addr] = data;
+        self.bus.mem_write(addr, data);
     }
 
-    fn mem_write_u16(self: *Self, pos: u16, data: u16) void {
-        const upper: u8 = @intCast(data >> 8);
-        const lower: u8 = @intCast(data & 0x00FF);
-        self.mem_write(pos, lower);
-        self.mem_write(pos + 1, upper);
+    pub fn mem_write_u16(self: *Self, pos: u16, data: u16) void {
+        self.bus.mem_write_u16(pos, data);
+    }
+
+    pub fn memory(self: *@This()) Mem {
+        return Mem{ .ptr = @ptrCast(self), .impl = &.{ .mem_read = mem_read, .mem_read_u16 = mem_read_u16, .mem_write = mem_write, .mem_write_u16 = mem_write_u16 } };
     }
 
     ///
