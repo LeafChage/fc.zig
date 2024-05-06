@@ -80,7 +80,7 @@ pub fn main() !void {
                     sdl.SDL_RenderPresent(self.renderer);
                 }
             }
-            // sdl.SDL_Delay(170);
+            std.time.sleep(70000);
         }
 
         pub fn callback(self: *@This()) CPUCallback {

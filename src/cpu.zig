@@ -37,7 +37,9 @@ pub const CPU = struct {
 
     memory: [0xFFFF + 1]u8,
     // program ROM 0x8000 ~ 0xFFFF
-    const ProgramMemoryStartIndex = 0x8000;
+
+    // const ProgramMemoryStartIndex = 0x8000;
+    const ProgramMemoryStartIndex = 0x0600;
 
     const Self = @This();
     pub fn init() Self {
@@ -73,11 +75,9 @@ pub const CPU = struct {
     pub fn load(self: *Self, program: []const u8) void {
         // CPU.show_program(program);
 
-        // const from = ProgramMemoryStartIndex;
-        const from = 0x0600;
+        const from = ProgramMemoryStartIndex;
         const to = from + program.len;
         @memcpy(self.memory[from..to], program);
-        // self.mem_write_u16(0xFFFC, 0x8000);
         self.mem_write_u16(0xFFFC, from);
     }
 
@@ -107,10 +107,15 @@ pub const CPU = struct {
 
         switch (code.t) {
             CodeType.BRK => {
-                // self.brk();
+                // std.time.sleep(std.time.ns_per_s);
+                self.brk();
             },
             CodeType.ADC => {
                 self.adc(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.SBC => {
+                self.sbc(code.mode);
                 self.program_counter += code.mode.bytes();
             },
             CodeType.LDA => {
@@ -139,15 +144,14 @@ pub const CPU = struct {
                 self.inc(code.mode);
                 self.program_counter += code.mode.bytes();
             },
-            CodeType.INX => {
-                self.inx();
+            CodeType.INX => self.inx(),
+            CodeType.INY => self.iny(),
+            CodeType.DEC => {
+                self.dec(code.mode);
+                self.program_counter += code.mode.bytes();
             },
-            CodeType.DEX => {
-                self.dex();
-            },
-            CodeType.INY => {
-                self.iny();
-            },
+            CodeType.DEX => self.dex(),
+            CodeType.DEY => self.dey(),
             CodeType.LDX => {
                 self.ldx(code.mode);
                 self.program_counter += code.mode.bytes();
@@ -157,7 +161,9 @@ pub const CPU = struct {
                 self.program_counter += code.mode.bytes();
             },
             CodeType.NOP => {
-                std.log.warn("NOP: 0x{x}", .{opscode});
+                if (opscode != 0xEA) {
+                    std.debug.panic("NOP: 0x{x}", .{opscode});
+                }
             },
             CodeType.SEC => {
                 self.sec();
@@ -259,17 +265,20 @@ pub const CPU = struct {
         }
         std.log.debug("A: 0x{x}, X: 0x{x}, Y: 0x{x}, PC: 0x{x}, SP: 0x{x}", .{ self.register_a, self.register_x, self.register_y, self.program_counter, self.stack_pointer });
         std.log.debug("{}", .{self.status});
-        for (0..4) |i| {
-            std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
-        }
-        std.log.debug("==stack==", .{});
-        for (4..8) |i| {
-            std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
-        }
-        std.log.debug("==display==", .{});
-        for (8..22) |i| {
-            std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
-        }
+        std.log.debug("head: {} {}", .{ self.memory[0x10], self.memory[0x11] });
+        std.log.debug("length: {}", .{self.memory[0x03]});
+        std.log.debug("apple: {} {}", .{ self.memory[0x00], self.memory[0x01] });
+        // for (0..4) |i| {
+        //     std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
+        // }
+        // std.log.debug("==stack==", .{});
+        // for (4..8) |i| {
+        //     std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
+        // }
+        // std.log.debug("==display==", .{});
+        // for (8..22) |i| {
+        //     std.log.debug("{}", .{std.fmt.fmtSliceHexUpper(self.memory[64 * i .. 64 * (i + 1)])});
+        // }
     }
 
     // for test
@@ -336,22 +345,47 @@ pub const CPU = struct {
         self.program_counter = (upper << 8) | lower;
     }
 
+    fn add_to_register(self: *Self, v: u8) void {
+        _ = v;
+        _ = self;
+    }
+
     fn adc(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
-        const value = @as(u16, self.mem_read(addr));
+        const v = self.mem_read(addr);
         const register_a = @as(u16, self.register_a);
         const carry: u16 = if (self.status.carry) 1 else 0;
 
         // cast from u8 to u16 for checking carry flag
-        const sum = register_a + value + carry;
+        const sum = register_a + @as(u16, v) + carry;
 
         self.status.carry = sum > 0xFF;
 
+        const result: u8 = @truncate(sum);
         // TODO:
         // ref: https://github.com/bugzmanov/nes_ebook/blob/5e1433984362b62f7d4cec4280691c0c8833cb61/code/ch3.3/src/cpu.rs#L280C1-L280C70
-        self.status.overflow = (value ^ sum) & (sum ^ self.register_a) & 0x80 != 0;
+        self.status.overflow = (v ^ result) & (result ^ self.register_a) & 0x80 != 0;
 
-        self.register_a = @intCast(sum & 0x00FF);
+        self.register_a = result;
+    }
+
+    fn sbc(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const data = ~(self.mem_read(addr)) + 1;
+        const register_a = @as(u16, self.register_a);
+        const carry: u16 = if (!self.status.carry) 1 else 0;
+
+        // cast from u8 to u16 for checking carry flag
+        const sum = register_a + @as(u16, data) + carry;
+
+        self.status.carry = sum > 0xFF;
+
+        const result: u8 = @truncate(sum);
+        // TODO:
+        // ref: https://github.com/bugzmanov/nes_ebook/blob/5e1433984362b62f7d4cec4280691c0c8833cb61/code/ch3.3/src/cpu.rs#L280C1-L280C70
+        self.status.overflow = (data ^ result) & (result ^ self.register_a) & 0x80 != 0;
+
+        self.register_a = result;
     }
 
     // load to A
@@ -465,6 +499,24 @@ pub const CPU = struct {
         try std.testing.expectEqual(cpu.mem_read(0x10), 0x02);
     }
 
+    // decrement
+    fn dec(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const data = self.mem_read(addr) -% 1;
+        self.mem_write(addr, data);
+        self.update_zero_and_negative_flag(data);
+    }
+
+    test "dec" {
+        var cpu = CPU.init();
+        cpu.test_for_single_run(&[_]u8{ 0xC6, 0x10, 0x00 }, struct {
+            fn f(_cpu: *CPU) void {
+                _cpu.mem_write(0x10, 0x01);
+            }
+        }.f);
+        try std.testing.expectEqual(cpu.mem_read(0x10), 0x00);
+    }
+
     // increment X
     fn inx(self: *Self) void {
         self.register_x = self.register_x +% 1;
@@ -543,6 +595,34 @@ pub const CPU = struct {
             }
         }.f);
         try std.testing.expectEqual(cpu.register_y, 0x00);
+    }
+
+    // decrement Y
+    fn dey(self: *Self) void {
+        self.register_y = self.register_y -% 1;
+        self.update_zero_and_negative_flag(self.register_y);
+    }
+
+    test "dey" {
+        var cpu = CPU.init();
+        cpu.test_for_single_run(&[_]u8{ 0x88, 0x00 }, struct {
+            fn f(_cpu: *CPU) void {
+                _cpu.register_y = 0x01;
+            }
+        }.f);
+        try std.testing.expectEqual(cpu.register_y, 0x00);
+        try std.testing.expect(cpu.status.zero);
+    }
+
+    test "dey overflow" {
+        var cpu = CPU.init();
+        cpu.test_for_single_run(&[_]u8{ 0x88, 0x00 }, struct {
+            fn f(_cpu: *CPU) void {
+                _cpu.register_y = 0x00;
+            }
+        }.f);
+        try std.testing.expectEqual(cpu.register_y, 0xFF);
+        try std.testing.expect(!cpu.status.zero);
     }
 
     // store A to memory

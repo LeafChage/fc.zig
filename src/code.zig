@@ -190,7 +190,7 @@ pub const Codes: [std.math.maxInt(u8)]Code = init: {
         Code.init(0x98, CodeType.TYA, 2, AddressingMode.None),
     };
 
-    var ordered_codes = [_]Code{Code.init(0x00, CodeType.NOP, 0, AddressingMode.None)} ** std.math.maxInt(u8);
+    var ordered_codes = [_]Code{Code.init(0xEA, CodeType.NOP, 0, AddressingMode.None)} ** std.math.maxInt(u8);
     for (codes) |code| {
         ordered_codes[code.opecode] = code;
     }
@@ -219,8 +219,8 @@ pub const AddressingMode = enum {
             AddressingMode.ZeroPage => 1,
             AddressingMode.ZeroPageX => 1,
             AddressingMode.ZeroPageY => 1,
-            AddressingMode.IndirectX => 2,
-            AddressingMode.IndirectY => 2,
+            AddressingMode.IndirectX => 1,
+            AddressingMode.IndirectY => 1,
             AddressingMode.None => 0,
         };
     }
