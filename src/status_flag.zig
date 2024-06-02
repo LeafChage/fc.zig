@@ -1,6 +1,9 @@
 const std = @import("std");
 
-pub const StatusFlag = struct {
+pub const StatusFlag = packed struct {
+    // 7  bit  0
+    // ---- ----
+    // CZID BRVN
     negative: bool,
     overflow: bool,
     reserved: bool,
@@ -9,17 +12,6 @@ pub const StatusFlag = struct {
     interrupt: bool,
     zero: bool,
     carry: bool,
-
-    pub const Mask = struct {
-        const negative = 0b1000_0000;
-        const overflow = 0b0100_0000;
-        const reserved = 0b0010_0000;
-        const break_cmd = 0b0001_0000;
-        const decimal = 0b0000_1000;
-        const interrupt = 0b0000_0100;
-        const zero = 0b0000_0010;
-        const carry = 0b0000_0001;
-    };
 
     const Self = @This();
     pub fn init() Self {
@@ -36,16 +28,13 @@ pub const StatusFlag = struct {
     }
 
     pub fn from(b: u8) Self {
-        return StatusFlag{
-            .negative = b | Mask.negative == Mask.negative,
-            .overflow = b | Mask.overflow == Mask.overflow,
-            .reserved = true,
-            .break_cmd = b | Mask.break_cmd == Mask.break_cmd,
-            .decimal = b | Mask.decimal == Mask.decimal,
-            .interrupt = b | Mask.interrupt == Mask.interrupt,
-            .zero = b | Mask.zero == Mask.zero,
-            .carry = b | Mask.carry == Mask.carry,
-        };
+        var flag: Self = @bitCast(b);
+        flag.reserved = true;
+        return flag;
+    }
+
+    pub fn as_u8(self: Self) u8 {
+        return @bitCast(self);
     }
 
     pub fn format(
@@ -65,15 +54,22 @@ pub const StatusFlag = struct {
             @as(u8, if (status.carry) 1 else 0),
         });
     }
-
-    pub fn raw(self: Self) u8 {
-        return @as(u8, if (self.negative) Mask.negative else 0) |
-            @as(u8, if (self.overflow) Mask.overflow else 0) |
-            @as(u8, if (self.reserved) Mask.reserved else 0) |
-            @as(u8, if (self.break_cmd) Mask.break_cmd else 0) |
-            @as(u8, if (self.decimal) Mask.decimal else 0) |
-            @as(u8, if (self.interrupt) Mask.interrupt else 0) |
-            @as(u8, if (self.zero) Mask.zero else 0) |
-            @as(u8, if (self.carry) Mask.carry else 0);
-    }
 };
+
+test "status_flag as u8" {
+    var flag = StatusFlag.init();
+    flag.overflow = true;
+    try std.testing.expectEqual(0b0000_0110, flag.as_u8());
+}
+
+test "status_flag from" {
+    const flag = StatusFlag.from(0b0001_0010);
+    try std.testing.expect(!flag.negative);
+    try std.testing.expect(flag.overflow);
+    try std.testing.expect(flag.reserved);
+    try std.testing.expect(!flag.break_cmd);
+    try std.testing.expect(flag.decimal);
+    try std.testing.expect(!flag.interrupt);
+    try std.testing.expect(!flag.zero);
+    try std.testing.expect(!flag.carry);
+}

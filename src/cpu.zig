@@ -5,7 +5,10 @@ const Codes = _code.Codes;
 const CodeType = _code.CodeType;
 const AddressingMode = _code.AddressingMode;
 const StatusFlag = @import("./status_flag.zig").StatusFlag;
-const Mem = @import("./bus.zig").Mem;
+const _bus = @import("./bus.zig");
+const Bus = _bus.Bus;
+const Mem = _bus.Mem;
+const rom = @import("./rom.zig");
 
 pub const CPUCallback = struct {
     ptr: *anyopaque,
@@ -37,10 +40,9 @@ pub const CPU = struct {
     program_counter: u16,
 
     bus: Mem,
-    // program ROM 0x8000 ~ 0xFFFF
 
-    // const ProgramMemoryStartIndex = 0x8000;
-    const ProgramMemoryStartIndex = 0x0600;
+    // program ROM 0x8000 ~ 0xFFFF
+    const ProgramMemoryStartIndex = 0x8000;
 
     const Self = @This();
     pub fn init(bus: Mem) Self {
@@ -55,12 +57,111 @@ pub const CPU = struct {
         };
     }
 
+    pub fn format(
+        cpu: Self,
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        try writer.print("{x:0>4} ", .{cpu.program_counter});
+        const opscode = cpu.bus.mem_read(cpu.program_counter);
+        const code = Codes[opscode];
+        try switch (code.mode) {
+            AddressingMode.Immediate => writer.print("{X:0>2} {X:0>2}   {} #${X:0>2} ", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                code.t,
+                cpu.bus.mem_read(cpu.get_operand_address(code.mode)),
+            }),
+            AddressingMode.Absolute => writer.print("{X:0>2} {X:0>2} {X:0>2} {} ${X:0>4}", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                cpu.bus.mem_read(cpu.program_counter + 2),
+                code.t,
+                cpu.get_operand_address(code.mode),
+            }),
+            AddressingMode.AbsoluteX => writer.print("{X:0>2} {X:0>2} {X:0>2} {} #${X:0>4},x", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                cpu.bus.mem_read(cpu.program_counter + 2),
+                code.t,
+                cpu.get_operand_address(code.mode),
+            }),
+            AddressingMode.AbsoluteY => writer.print("{X:0>2} {X:0>2} {X:0>2} {} #${X:0>4},y", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                cpu.bus.mem_read(cpu.program_counter + 2),
+                code.t,
+                cpu.get_operand_address(code.mode),
+            }),
+            AddressingMode.ZeroPage => writer.print("{X:0>2} {X:0>2}   {}  ${X:0>2} ", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                code.t,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+            }),
+            AddressingMode.ZeroPageX => writer.print("{X:0>2} {X:0>2}   {}  ${X:0>2},x ", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                code.t,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+            }),
+            AddressingMode.ZeroPageY => writer.print("{X:0>2} {X:0>2}   {}  ${X:0>2},y ", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                code.t,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+            }),
+            AddressingMode.IndirectX => writer.print("{X:0>2} {X:0>2}   {}  (${X:0>2},X) = {X:0>4} @ {X:0>4} = {X:0>2} ", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                code.t,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                cpu.get_operand_address(code.mode),
+                cpu.get_operand_address(code.mode),
+                cpu.bus.mem_read(cpu.get_operand_address(code.mode)),
+            }),
+            AddressingMode.IndirectY => writer.print("{X:0>2} {X:0>2}   {}  (${X:0>2}),Y = {X:0>4} @ {X:0>4} = {X:0>2} ", .{
+                opscode,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                code.t,
+                cpu.bus.mem_read(cpu.program_counter + 1),
+                cpu.get_operand_address(code.mode),
+                cpu.get_operand_address(code.mode),
+                cpu.bus.mem_read(cpu.get_operand_address(code.mode)),
+            }),
+            AddressingMode.None => writer.print("{X:0>2}      {}", .{ opscode, code.t }),
+        };
+
+        try writer.print("A:{X:0>2} X:{X:0>2} Y:{X:0>2} P:{X:0>2} SP:{X:0>2}", .{
+            cpu.register_a,
+            cpu.register_x,
+            cpu.register_y,
+            cpu.status.raw(),
+            cpu.stack_pointer,
+        });
+
+        // return writer.print("n: {}, o: {}, r: {}, b: {}, d: {}, i: {}, z: {}, c:{}", .{
+        //     @as(u8, if (status.negative) 1 else 0),
+        //     @as(u8, if (status.overflow) 1 else 0),
+        //     @as(u8, if (status.reserved) 1 else 0),
+        //     @as(u8, if (status.break_cmd) 1 else 0),
+        //     @as(u8, if (status.decimal) 1 else 0),
+        //     @as(u8, if (status.interrupt) 1 else 0),
+        //     @as(u8, if (status.zero) 1 else 0),
+        //     @as(u8, if (status.carry) 1 else 0),
+        // });
+    }
+
     pub fn reset(self: *Self) void {
         self.register_a = 0;
         self.register_x = 0;
         self.status = StatusFlag.init();
         self.status.interrupt = true;
         self.program_counter = self.mem_read_u16(0xFFFC);
+        if (self.program_counter == 0) {
+            self.program_counter = 0x8000;
+        }
     }
 
     fn show_program(program: []const u8) void {
@@ -73,17 +174,7 @@ pub const CPU = struct {
         }
     }
 
-    pub fn load(self: *Self, program: []const u8) void {
-        // CPU.show_program(program);
-
-        const from = ProgramMemoryStartIndex;
-        const to = from + program.len;
-        @memcpy(self.memory[from..to], program);
-        self.mem_write_u16(0xFFFC, from);
-    }
-
-    pub fn load_and_run(self: *Self, program: []const u8) void {
-        self.load(program);
+    pub fn reset_and_run(self: *Self) void {
         self.reset();
         self.run();
     }
@@ -96,33 +187,48 @@ pub const CPU = struct {
     pub fn run_with_callback(self: *Self, callback: CPUCallback) void {
         while (true) {
             callback.run(self);
-            self.single_run();
+            if (!self.single_run()) {
+                break;
+            }
         }
     }
 
-    fn single_run(self: *Self) void {
+    fn single_run(self: *Self) bool {
         const opscode = self.mem_read(self.program_counter);
         const code = Codes[opscode];
-        std.log.debug("@0x{x} [0x{x} 0x{x} 0x{x}] {} {}", .{ self.program_counter, opscode, self.mem_read(self.program_counter + 1), self.mem_read(self.program_counter + 2), code.t, code.mode });
+        // std.log.debug("@0x{x} [0x{x} 0x{x} 0x{x}] {} {}", .{ self.program_counter, opscode, self.mem_read(self.program_counter + 1), self.mem_read(self.program_counter + 2), code.t, code.mode });
         self.program_counter += 1;
 
         switch (code.t) {
-            CodeType.BRK => {
-                // std.time.sleep(std.time.ns_per_s);
-                self.brk();
-            },
-            CodeType.ADC => {
-                self.adc(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.SBC => {
-                self.sbc(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
             CodeType.LDA => {
                 self.lda(code.mode);
                 self.program_counter += code.mode.bytes();
             },
+            CodeType.LDX => {
+                self.ldx(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.LDY => {
+                self.ldy(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.TAX => self.tax(),
+            CodeType.TXA => self.txa(),
+
+            CodeType.INC => {
+                self.inc(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.INX => self.inx(),
+            CodeType.INY => self.iny(),
+
+            CodeType.DEC => {
+                self.dec(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.DEX => self.dex(),
+            CodeType.DEY => self.dey(),
+
             CodeType.STA => {
                 self.sta(code.mode);
                 self.program_counter += code.mode.bytes();
@@ -135,68 +241,16 @@ pub const CPU = struct {
                 self.sty(code.mode);
                 self.program_counter += code.mode.bytes();
             },
-            CodeType.TAX => {
-                self.tax();
-            },
-            CodeType.TXA => {
-                self.txa();
-            },
-            CodeType.INC => {
-                self.inc(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.INX => self.inx(),
-            CodeType.INY => self.iny(),
-            CodeType.DEC => {
-                self.dec(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.DEX => self.dex(),
-            CodeType.DEY => self.dey(),
-            CodeType.LDX => {
-                self.ldx(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.LDY => {
-                self.ldy(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.NOP => {
-                if (opscode != 0xEA) {
-                    std.debug.panic("NOP: 0x{x}", .{opscode});
-                }
-            },
-            CodeType.SEC => {
-                self.sec();
-            },
-            CodeType.SED => {
-                self.sed();
-            },
-            CodeType.SEI => {
-                self.sei();
-            },
-            CodeType.CLC => {
-                self.clc();
-            },
-            CodeType.CLD => {
-                self.cld();
-            },
-            CodeType.CLI => {
-                self.cli();
-            },
-            CodeType.CLV => {
-                self.clv();
-            },
-            CodeType.BIT => {
-                self.bit(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.JSR => {
-                self.jsr();
-            },
-            CodeType.JMP => {
-                self.jmp(code.mode);
-            },
+
+            CodeType.SEC => self.sec(),
+            CodeType.SED => self.sed(),
+            CodeType.SEI => self.sei(),
+
+            CodeType.CLC => self.clc(),
+            CodeType.CLD => self.cld(),
+            CodeType.CLI => self.cli(),
+            CodeType.CLV => self.clv(),
+
             CodeType.BCC => self.bcc(),
             CodeType.BCS => self.bcs(),
             CodeType.BEQ => self.beq(),
@@ -205,6 +259,11 @@ pub const CPU = struct {
             CodeType.BVS => self.bvs(),
             CodeType.BPL => self.bpl(),
             CodeType.BMI => self.bmi(),
+
+            CodeType.JSR => self.jsr(),
+            CodeType.JMP => self.jmp(code.mode),
+            CodeType.RTS => self.rts(),
+
             CodeType.CMP => {
                 self.cmp(code.mode);
                 self.program_counter += code.mode.bytes();
@@ -217,21 +276,7 @@ pub const CPU = struct {
                 self.cpy(code.mode);
                 self.program_counter += code.mode.bytes();
             },
-            CodeType.RTS => {
-                self.rts();
-            },
-            CodeType.ORA => {
-                self.ora(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.AND => {
-                self.andexec(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
-            CodeType.EOR => {
-                self.eor(code.mode);
-                self.program_counter += code.mode.bytes();
-            },
+
             CodeType.ROL => {
                 self.rol(code.mode);
                 self.program_counter += code.mode.bytes();
@@ -246,6 +291,41 @@ pub const CPU = struct {
                 } else {
                     self.asl(code.mode);
                     self.program_counter += code.mode.bytes();
+                }
+            },
+
+            CodeType.BIT => {
+                self.bit(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.ORA => {
+                self.ora(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.AND => {
+                self.andexec(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.EOR => {
+                self.eor(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+
+            CodeType.BRK => {
+                // self.brk();
+                return false;
+            },
+            CodeType.ADC => {
+                self.adc(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.SBC => {
+                self.sbc(code.mode);
+                self.program_counter += code.mode.bytes();
+            },
+            CodeType.NOP => {
+                if (opscode != 0xEA) {
+                    std.debug.panic("NOP: 0x{x}", .{opscode});
                 }
             },
             CodeType.LSR => {
@@ -264,19 +344,9 @@ pub const CPU = struct {
                 });
             },
         }
-        std.log.debug("A: 0x{x}, X: 0x{x}, Y: 0x{x}, PC: 0x{x}, SP: 0x{x}", .{ self.register_a, self.register_x, self.register_y, self.program_counter, self.stack_pointer });
-        std.log.debug("{}", .{self.status});
-    }
-
-    // for test
-    fn test_for_single_run(self: *Self, program: []const u8, prepare: fn (v: *CPU) void) void {
-        if (!builtin.is_test) {
-            unreachable;
-        }
-        self.load(program);
-        self.reset();
-        prepare(self);
-        self.single_run();
+        return true;
+        // std.log.debug("A: 0x{x}, X: 0x{x}, Y: 0x{x}, PC: 0x{x}, SP: 0x{x}", .{ self.register_a, self.register_x, self.register_y, self.program_counter, self.stack_pointer });
+        // std.log.debug("{}", .{self.status});
     }
 
     fn get_operand_address(self: Self, mode: AddressingMode) u16 {
@@ -332,49 +402,9 @@ pub const CPU = struct {
         self.program_counter = (upper << 8) | lower;
     }
 
-    fn add_to_register(self: *Self, v: u8) void {
-        _ = v;
-        _ = self;
-    }
-
-    fn adc(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const v = self.mem_read(addr);
-        const register_a = @as(u16, self.register_a);
-        const carry: u16 = if (self.status.carry) 1 else 0;
-
-        // cast from u8 to u16 for checking carry flag
-        const sum = register_a + @as(u16, v) + carry;
-
-        self.status.carry = sum > 0xFF;
-
-        const result: u8 = @truncate(sum);
-        // TODO:
-        // ref: https://github.com/bugzmanov/nes_ebook/blob/5e1433984362b62f7d4cec4280691c0c8833cb61/code/ch3.3/src/cpu.rs#L280C1-L280C70
-        self.status.overflow = (v ^ result) & (result ^ self.register_a) & 0x80 != 0;
-
-        self.register_a = result;
-    }
-
-    fn sbc(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const data = ~(self.mem_read(addr)) + 1;
-        const register_a = @as(u16, self.register_a);
-        const carry: u16 = if (!self.status.carry) 1 else 0;
-
-        // cast from u8 to u16 for checking carry flag
-        const sum = register_a + @as(u16, data) + carry;
-
-        self.status.carry = sum > 0xFF;
-
-        const result: u8 = @truncate(sum);
-        // TODO:
-        // ref: https://github.com/bugzmanov/nes_ebook/blob/5e1433984362b62f7d4cec4280691c0c8833cb61/code/ch3.3/src/cpu.rs#L280C1-L280C70
-        self.status.overflow = (data ^ result) & (result ^ self.register_a) & 0x80 != 0;
-
-        self.register_a = result;
-    }
-
+    //
+    // load
+    //
     // load to A
     fn lda(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
@@ -383,7 +413,6 @@ pub const CPU = struct {
         self.register_a = value;
         self.update_zero_and_negative_flag(self.register_a);
     }
-
     // load to X
     fn ldx(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
@@ -392,24 +421,6 @@ pub const CPU = struct {
         self.register_x = value;
         self.update_zero_and_negative_flag(self.register_x);
     }
-
-    test "ldx" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xA2, 0x05, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expectEqual(cpu.register_x, 0x05);
-        try std.testing.expect(!cpu.status.zero);
-        try std.testing.expect(!cpu.status.negative);
-    }
-    test "ldx zero flag" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xA2, 0x00, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(cpu.status.zero);
-    }
-
     // load to Y
     fn ldy(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
@@ -419,364 +430,118 @@ pub const CPU = struct {
         self.update_zero_and_negative_flag(self.register_y);
     }
 
-    test "ldy" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xA0, 0x05, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expectEqual(cpu.register_y, 0x05);
-        try std.testing.expect(!cpu.status.zero);
-        try std.testing.expect(!cpu.status.negative);
-    }
-    test "ldy zero flag" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xA0, 0x00, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(cpu.status.zero);
-    }
-
+    //
+    // transfer
+    //
     // transfer A to X
     fn tax(self: *Self) void {
         self.register_x = self.register_a;
         self.update_zero_and_negative_flag(self.register_x);
     }
-
-    test "tax" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xAA, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0x10;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_x, 0x10);
-    }
-
     // transfer x to A
     fn txa(self: *Self) void {
         self.register_a = self.register_x;
         self.update_zero_and_negative_flag(self.register_a);
     }
 
-    test "txa" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x8A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x10;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0x10);
-    }
-
+    //
     // increment
+    //
     fn inc(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         const data = self.mem_read(addr) +% 1;
         self.mem_write(addr, data);
         self.update_zero_and_negative_flag(data);
     }
-
-    test "inc" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xE6, 0x10, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.mem_write(0x10, 0x01);
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0x02);
-    }
-
-    // decrement
-    fn dec(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const data = self.mem_read(addr) -% 1;
-        self.mem_write(addr, data);
-        self.update_zero_and_negative_flag(data);
-    }
-
-    test "dec" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC6, 0x10, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.mem_write(0x10, 0x01);
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0x00);
-    }
-
     // increment X
     fn inx(self: *Self) void {
         self.register_x = self.register_x +% 1;
         self.update_zero_and_negative_flag(self.register_x);
     }
-
-    test "inx" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xE8, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x01;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_x, 0x02);
-    }
-
-    test "inx overflow" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xE8, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0xFF;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_x, 0x00);
-    }
-
-    // decrement X
-    fn dex(self: *Self) void {
-        self.register_x = self.register_x -% 1;
-        self.update_zero_and_negative_flag(self.register_x);
-    }
-
-    test "dex" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xCA, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x01;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_x, 0x00);
-        try std.testing.expect(cpu.status.zero);
-    }
-
-    test "dex overflow" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xCA, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x00;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_x, 0xFF);
-        try std.testing.expect(!cpu.status.zero);
-    }
-
     // increment Y
     fn iny(self: *Self) void {
         self.register_y = self.register_y +% 1;
         self.update_zero_and_negative_flag(self.register_y);
     }
 
-    test "iny" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC8, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0x01;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_y, 0x02);
+    //
+    // decrement
+    //
+    fn dec(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const data = self.mem_read(addr) -% 1;
+        self.mem_write(addr, data);
+        self.update_zero_and_negative_flag(data);
     }
-
-    test "iny overflow" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC8, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0xFF;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_y, 0x00);
+    // decrement X
+    fn dex(self: *Self) void {
+        self.register_x = self.register_x -% 1;
+        self.update_zero_and_negative_flag(self.register_x);
     }
-
     // decrement Y
     fn dey(self: *Self) void {
         self.register_y = self.register_y -% 1;
         self.update_zero_and_negative_flag(self.register_y);
     }
 
-    test "dey" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x88, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0x01;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_y, 0x00);
-        try std.testing.expect(cpu.status.zero);
-    }
-
-    test "dey overflow" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x88, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0x00;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_y, 0xFF);
-        try std.testing.expect(!cpu.status.zero);
-    }
-
+    //
+    // store
+    //
     // store A to memory
     fn sta(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
     }
-
-    test "sta" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x85, 0x10 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0x55;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
-    }
-
     // store X to memory
     fn stx(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_x);
     }
-
-    test "stx" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x86, 0x10 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x55;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
-    }
-
     // store Y to memory
     fn sty(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_y);
     }
 
-    test "sty" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x84, 0x10 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0x55;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
-    }
-
+    //
+    // setting flag
+    //
     // set carry flag
     fn sec(self: *Self) void {
         self.status.carry = true;
     }
-
-    test "sec" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x38, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(cpu.status.carry);
-    }
-
     // set decimal flag
     fn sed(self: *Self) void {
         self.status.decimal = true;
     }
-
-    test "sed" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xF8, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(cpu.status.decimal);
-    }
-
     // set interrupt flag
     fn sei(self: *Self) void {
         self.status.interrupt = true;
     }
 
-    test "sei" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x78, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(cpu.status.interrupt);
-    }
-
+    //
+    // clearing flag
+    //
     // unset carry flag
     fn clc(self: *Self) void {
         self.status.carry = false;
     }
-
-    test "clc" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x18, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(!cpu.status.carry);
-    }
-
     // unset decimal flag
     fn cld(self: *Self) void {
         self.status.decimal = false;
     }
-
-    test "cld" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xD8, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(!cpu.status.decimal);
-    }
-
     // unset interrupt flag
     fn cli(self: *Self) void {
         self.status.interrupt = false;
     }
-
-    test "cli" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x58, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(!cpu.status.interrupt);
-    }
-
     // unset overflow flag
     fn clv(self: *Self) void {
         self.status.overflow = false;
     }
 
-    test "clv" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xB8, 0x00 }, struct {
-            fn f(_: *CPU) void {}
-        }.f);
-        try std.testing.expect(!cpu.status.overflow);
-    }
-
-    fn bit(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const data = self.mem_read(addr);
-        const result = self.register_a & data;
-        if (result == 0) {
-            self.status.zero = true;
-        }
-        self.status.negative = data & 0b1000_0000 == 0b1000_0000;
-        self.status.overflow = data & 0b0100_0000 == 0b0100_0000;
-    }
-
-    fn jsr(self: *Self) void {
-        // JSR is with absolute operand which has two bites, and this tries to push address before next code
-        self.stack_push_u16(self.program_counter + 1);
-
-        const addr = self.mem_read_u16(self.program_counter);
-        std.log.debug("JSR: push: 0x{x}, jump to: 0x{x} ", .{ self.program_counter + 1, addr });
-        self.program_counter = addr;
-    }
-
-    fn jmp(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        std.log.debug("JMP: jump to: 0x{x} ", .{addr});
-        self.program_counter = addr;
-    }
-
+    //
+    // branch
+    //
     fn branch(self: *Self, flag: bool) void {
         if (flag) {
             const offset: i8 = @bitCast(self.mem_read(self.program_counter));
@@ -787,7 +552,6 @@ pub const CPU = struct {
             self.program_counter += 1;
         }
     }
-
     fn bcc(self: *Self) void {
         self.branch(!self.status.carry);
     }
@@ -813,159 +577,43 @@ pub const CPU = struct {
         self.branch(self.status.negative);
     }
 
-    test "bcc jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x90, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.carry = false;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "bcc jump -10" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x90, @bitCast(@as(i8, -0x05)) });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.carry = false;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next - 0x05, cpu.program_counter);
-    }
-    test "bcc no jump" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x90, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.carry = true;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next, cpu.program_counter);
-    }
-    test "bcs jump" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0xB0, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.carry = true;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "beq jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0xF0, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.zero = true;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "bne jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0xD0, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.zero = false;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "bvc jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x50, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.overflow = false;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "bvs jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x70, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.overflow = true;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "bpl jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x10, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.negative = false;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
-    test "bmi jump +5" {
-        var cpu = CPU.init();
-        cpu.load(&[_]u8{ 0x30, 0x05 });
-        cpu.reset();
-        const next = cpu.program_counter + 2;
-        cpu.status.negative = true;
-        _ = cpu.single_run();
-        try std.testing.expectEqual(next + 0x05, cpu.program_counter);
-    }
+    //
+    // jump
+    //
+    fn jsr(self: *Self) void {
+        // JSR is with absolute operand which has two bites, and this tries to push address before next code
+        self.stack_push_u16(self.program_counter + 1);
 
+        const addr = self.mem_read_u16(self.program_counter);
+        std.log.debug("JSR: push: 0x{x}, jump to: 0x{x} ", .{ self.program_counter + 1, addr });
+        self.program_counter = addr;
+    }
+    fn jmp(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        std.log.debug("JMP: jump to: 0x{x} ", .{addr});
+        self.program_counter = addr;
+    }
     fn rts(self: *Self) void {
         const addr = self.stack_pop_u16();
         std.log.debug("RTS: return to: 0x{x} ", .{addr});
         self.program_counter = addr + 1;
     }
 
+    //
+    // compare
+    //
     fn cmp(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         const mem = self.mem_read(addr);
         self.status.carry = self.register_a >= mem;
         self.update_zero_and_negative_flag(self.register_a -% mem);
     }
-
-    test "cmp with carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC9, 0x01, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0x01;
-            }
-        }.f);
-        try std.testing.expect(cpu.status.carry);
-        try std.testing.expect(cpu.status.zero);
-    }
-
-    test "cmp not carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC9, 0x01, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0x00;
-            }
-        }.f);
-        try std.testing.expect(!cpu.status.carry);
-    }
-
     fn cpx(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         const mem = self.mem_read(addr);
         self.status.carry = self.register_x >= mem;
         self.update_zero_and_negative_flag(self.register_x -% mem);
     }
-
-    test "cpx with carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xE0, 0x01, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x01;
-            }
-        }.f);
-        try std.testing.expect(cpu.status.carry);
-        try std.testing.expect(cpu.status.zero);
-    }
-
-    test "cpx not carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xE0, 0x01, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_x = 0x00;
-            }
-        }.f);
-        try std.testing.expect(!cpu.status.carry);
-    }
-
     fn cpy(self: *Self, mode: AddressingMode) void {
         const addr = self.get_operand_address(mode);
         const mem = self.mem_read(addr);
@@ -973,82 +621,10 @@ pub const CPU = struct {
         self.update_zero_and_negative_flag(self.register_y -% mem);
     }
 
-    test "cpy with carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC0, 0x01, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0x01;
-            }
-        }.f);
-        try std.testing.expect(cpu.status.carry);
-        try std.testing.expect(cpu.status.zero);
-    }
-
-    test "cpy not carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0xC0, 0x01, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_y = 0x00;
-            }
-        }.f);
-        try std.testing.expect(!cpu.status.carry);
-    }
-
-    // A = M | A
-    fn ora(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const b = self.mem_read(addr);
-        self.register_a = self.register_a | b;
-        self.update_zero_and_negative_flag(self.register_a);
-    }
-
-    test "ora" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x09, 0b1000_0000, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b0000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b1000_1111);
-    }
-
-    // A = M & A
-    fn andexec(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const b = self.mem_read(addr);
-        self.register_a = self.register_a & b;
-        self.update_zero_and_negative_flag(self.register_a);
-    }
-
-    test "andexec" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x29, 0b1000_0000, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b1000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b1000_0000);
-    }
-
-    // A = M ^ A
-    fn eor(self: *Self, mode: AddressingMode) void {
-        const addr = self.get_operand_address(mode);
-        const b = self.mem_read(addr);
-        self.register_a = self.register_a ^ b;
-        self.update_zero_and_negative_flag(self.register_a);
-    }
-
-    test "eor" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x49, 0b1000_0000, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b1000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0000_1111);
-    }
-
-    // // A << left
+    //
+    // Shift
+    //
+    // A << left
     fn rol(self: *Self, _: AddressingMode) void {
         // flag carry from bit 7 of A
         const carry = self.register_a & 0b1000_0000 == 0b1000_0000;
@@ -1059,41 +635,6 @@ pub const CPU = struct {
         self.status.carry = carry;
         self.update_zero_and_negative_flag(self.register_a);
     }
-
-    test "rol" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x2A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.status.carry = false;
-                _cpu.register_a = 0b0000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
-        try std.testing.expect(!cpu.status.carry);
-    }
-    test "rol with carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x2A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.status.carry = true;
-                _cpu.register_a = 0b0000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0001_1111);
-        try std.testing.expect(!cpu.status.carry);
-    }
-    test "rol set carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x2A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.status.carry = false;
-                _cpu.register_a = 0b1000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
-        try std.testing.expect(cpu.status.carry);
-    }
-
     // A >> right
     fn ror(self: *Self, _: AddressingMode) void {
         const carry = self.register_a & 0b0000_0001 == 0b0000_0001;
@@ -1104,44 +645,7 @@ pub const CPU = struct {
         self.status.carry = carry;
         self.update_zero_and_negative_flag(self.register_a);
     }
-
-    test "ror" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x6A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.status.carry = false;
-                _cpu.register_a = 0b1111_0000;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
-        try std.testing.expect(!cpu.status.carry);
-    }
-    test "ror with carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x6A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.status.carry = true;
-                _cpu.register_a = 0b1111_0000;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b1111_1000);
-        try std.testing.expect(!cpu.status.carry);
-    }
-    test "ror set carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x6A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.status.carry = false;
-                _cpu.register_a = 0b1111_0001;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
-        try std.testing.expect(cpu.status.carry);
-    }
-
-    //
-    // ASL shift to left and flag carry from bit 7 of A
-    //
+    // shift to left and flag carry from bit 7 of A
     fn asl_accumulator(self: *Self) void {
         const carry = self.register_a & 0b1000_0000 == 0b1000_0000;
         self.register_a <<= 1;
@@ -1156,49 +660,8 @@ pub const CPU = struct {
         self.status.carry = carry;
         self.update_zero_and_negative_flag(self.register_a);
     }
-    test "asl" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x06, 0x10, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.mem_write(0x10, 0b0000_1111);
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0b0001_1110);
-        try std.testing.expect(!cpu.status.carry);
-    }
-    test "asl set carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x06, 0x10, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.mem_write(0x10, 0b1000_1111);
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0b0001_1110);
-        try std.testing.expect(cpu.status.carry);
-    }
-    test "asl accumulator" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x0A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b0000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
-        try std.testing.expect(!cpu.status.carry);
-    }
-    test "asl accumulator set carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x0A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b1000_1111;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
-        try std.testing.expect(cpu.status.carry);
-    }
-
     //
-    // ASL shift to left and flag carry from bit 7 of A
+    // shift to left and flag carry from bit 7 of A
     //
     fn lsr_accumulator(self: *Self) void {
         const carry = self.register_a & 0b0000_0001 == 0b0000_0001;
@@ -1214,45 +677,77 @@ pub const CPU = struct {
         self.status.carry = carry;
         self.update_zero_and_negative_flag(self.register_a);
     }
-    test "lsr" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x46, 0x10, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.mem_write(0x10, 0b1111_0000);
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0b0111_1000);
-        try std.testing.expect(!cpu.status.carry);
+
+    //
+    // bit operation
+    //
+    // A = M | A
+    fn ora(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const b = self.mem_read(addr);
+        self.register_a = self.register_a | b;
+        self.update_zero_and_negative_flag(self.register_a);
     }
-    test "lsr set carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x46, 0x10, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.mem_write(0x10, 0b1111_0001);
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.mem_read(0x10), 0b0111_1000);
-        try std.testing.expect(cpu.status.carry);
+    // A = M & A
+    fn andexec(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const b = self.mem_read(addr);
+        self.register_a = self.register_a & b;
+        self.update_zero_and_negative_flag(self.register_a);
     }
-    test "lsr accumulator" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x4A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b1111_0000;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
-        try std.testing.expect(!cpu.status.carry);
+    // A = M ^ A
+    fn eor(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const b = self.mem_read(addr);
+        self.register_a = self.register_a ^ b;
+        self.update_zero_and_negative_flag(self.register_a);
     }
-    test "lsr accumulator set carry" {
-        var cpu = CPU.init();
-        cpu.test_for_single_run(&[_]u8{ 0x4A, 0x00 }, struct {
-            fn f(_cpu: *CPU) void {
-                _cpu.register_a = 0b1111_0001;
-            }
-        }.f);
-        try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
-        try std.testing.expect(cpu.status.carry);
+    fn bit(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const data = self.mem_read(addr);
+        const result = self.register_a & data;
+        if (result == 0) {
+            self.status.zero = true;
+        }
+        self.status.negative = data & 0b1000_0000 == 0b1000_0000;
+        self.status.overflow = data & 0b0100_0000 == 0b0100_0000;
+    }
+
+    fn adc(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const v = self.mem_read(addr);
+        const register_a = @as(u16, self.register_a);
+        const carry: u16 = if (self.status.carry) 1 else 0;
+
+        // cast from u8 to u16 for checking carry flag
+        const sum = register_a + @as(u16, v) + carry;
+
+        self.status.carry = sum > 0xFF;
+
+        const result: u8 = @truncate(sum);
+        // TODO:
+        // ref: https://github.com/bugzmanov/nes_ebook/blob/5e1433984362b62f7d4cec4280691c0c8833cb61/code/ch3.3/src/cpu.rs#L280C1-L280C70
+        self.status.overflow = (v ^ result) & (result ^ self.register_a) & 0x80 != 0;
+
+        self.register_a = result;
+    }
+    fn sbc(self: *Self, mode: AddressingMode) void {
+        const addr = self.get_operand_address(mode);
+        const data = ~(self.mem_read(addr)) + 1;
+        const register_a = @as(u16, self.register_a);
+        const carry: u16 = if (!self.status.carry) 1 else 0;
+
+        // cast from u8 to u16 for checking carry flag
+        const sum = register_a + @as(u16, data) + carry;
+
+        self.status.carry = sum > 0xFF;
+
+        const result: u8 = @truncate(sum);
+        // TODO:
+        // ref: https://github.com/bugzmanov/nes_ebook/blob/5e1433984362b62f7d4cec4280691c0c8833cb61/code/ch3.3/src/cpu.rs#L280C1-L280C70
+        self.status.overflow = (data ^ result) & (result ^ self.register_a) & 0x80 != 0;
+
+        self.register_a = result;
     }
 
     fn update_zero_and_negative_flag(self: *Self, result: u8) void {
@@ -1315,50 +810,566 @@ pub const CPU = struct {
         const lower = @as(u16, self.stack_pop());
         return (upper << 8) | lower;
     }
-
-    test "stack pop push" {
-        var cpu = CPU.init();
-        cpu.stack_push(1);
-        try std.testing.expectEqual(cpu.stack_pointer, 0xff - 1);
-        cpu.stack_push(2);
-        try std.testing.expectEqual(cpu.stack_pointer, 0xff - 2);
-        cpu.stack_push(3);
-        try std.testing.expectEqual(cpu.stack_pointer, 0xff - 3);
-
-        try std.testing.expectEqual(cpu.stack_pop(), 3);
-        try std.testing.expectEqual(cpu.stack_pointer, 0xff - 2);
-        try std.testing.expectEqual(cpu.stack_pop(), 2);
-        try std.testing.expectEqual(cpu.stack_pointer, 0xff - 1);
-        try std.testing.expectEqual(cpu.stack_pop(), 1);
-        try std.testing.expectEqual(cpu.stack_pointer, 0xff);
-    }
 };
 
+test "stack pop push" {
+    var bus = Bus.init(rom.testRom(undefined));
+    const mem = bus.memory();
+    var cpu = CPU.init(mem);
+    cpu.stack_push(1);
+    try std.testing.expectEqual(cpu.stack_pointer, 0xff - 1);
+    cpu.stack_push(2);
+    try std.testing.expectEqual(cpu.stack_pointer, 0xff - 2);
+    cpu.stack_push(3);
+    try std.testing.expectEqual(cpu.stack_pointer, 0xff - 3);
+
+    try std.testing.expectEqual(cpu.stack_pop(), 3);
+    try std.testing.expectEqual(cpu.stack_pointer, 0xff - 2);
+    try std.testing.expectEqual(cpu.stack_pop(), 2);
+    try std.testing.expectEqual(cpu.stack_pointer, 0xff - 1);
+    try std.testing.expectEqual(cpu.stack_pop(), 1);
+    try std.testing.expectEqual(cpu.stack_pointer, 0xff);
+}
+
+// for test
+fn test_for_single_run(program: []const u8, prepare: ?(fn (v: *CPU) void)) CPU {
+    _ = std.testing.expect;
+    var bus = Bus.init(rom.testRom(program));
+    const mem = bus.memory();
+    var cpu = CPU.init(mem);
+    cpu.reset();
+    if (prepare != null) prepare.?(&cpu);
+    _ = cpu.single_run();
+    return cpu;
+}
+
+fn test_init(program: []const u8) CPU {
+    var bus = Bus.init(rom.testRom(program));
+    const mem = bus.memory();
+    return CPU.init(mem);
+}
+
+//
+// load
+//
 test "lda immediate" {
-    var cpu = CPU.init();
-    cpu.test_for_single_run(&[_]u8{ 0xA9, 0x05, 0x00 }, struct {
-        fn f(_: *CPU) void {}
-    }.f);
+    const cpu = test_for_single_run(&[_]u8{ 0xA9, 0x05, 0x00 }, null);
     try std.testing.expectEqual(cpu.register_a, 0x05);
     try std.testing.expect(!cpu.status.zero);
     try std.testing.expect(!cpu.status.negative);
 }
-
 test "lda from memory" {
-    var cpu = CPU.init();
-    cpu.test_for_single_run(&[_]u8{ 0xa5, 0x10, 0x00 }, struct {
+    const cpu = test_for_single_run(&[_]u8{ 0xa5, 0x10, 0x00 }, struct {
         fn f(_cpu: *CPU) void {
             _cpu.mem_write(0x10, 0x55);
         }
     }.f);
     try std.testing.expectEqual(cpu.register_a, 0x55);
 }
-
 test "lda zero flag" {
-    var cpu = CPU.init();
-    cpu.test_for_single_run(&[_]u8{ 0xA9, 0x00 }, struct {
-        fn f(_: *CPU) void {}
-    }.f);
+    const cpu = test_for_single_run(&[_]u8{ 0xA9, 0x00 }, null);
     try std.testing.expectEqual(cpu.register_a, 0x00);
     try std.testing.expect(cpu.status.zero);
+}
+test "ldx" {
+    const cpu = test_for_single_run(&[_]u8{ 0xA2, 0x05, 0x00 }, null);
+    try std.testing.expectEqual(cpu.register_x, 0x05);
+    try std.testing.expect(!cpu.status.zero);
+    try std.testing.expect(!cpu.status.negative);
+}
+test "ldx zero flag" {
+    const cpu = test_for_single_run(&[_]u8{ 0xA2, 0x00, 0x00 }, null);
+    try std.testing.expect(cpu.status.zero);
+}
+
+test "ldy" {
+    const cpu = test_for_single_run(&[_]u8{ 0xA0, 0x05, 0x00 }, null);
+    try std.testing.expectEqual(cpu.register_y, 0x05);
+    try std.testing.expect(!cpu.status.zero);
+    try std.testing.expect(!cpu.status.negative);
+}
+test "ldy zero flag" {
+    const cpu = test_for_single_run(&[_]u8{ 0xA0, 0x00, 0x00 }, null);
+    try std.testing.expect(cpu.status.zero);
+}
+
+//
+// transfer
+//
+test "tax" {
+    const cpu = test_for_single_run(&[_]u8{ 0xAA, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0x10;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_x, 0x10);
+}
+
+test "txa" {
+    const cpu = test_for_single_run(&[_]u8{ 0x8A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x10;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0x10);
+}
+
+//
+// increment
+//
+test "inc" {
+    const cpu = test_for_single_run(&[_]u8{ 0xE6, 0x10, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.mem_write(0x10, 0x01);
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0x02);
+}
+test "inx" {
+    const cpu = test_for_single_run(&[_]u8{ 0xE8, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x01;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_x, 0x02);
+}
+test "inx overflow" {
+    const cpu = test_for_single_run(&[_]u8{ 0xE8, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0xFF;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_x, 0x00);
+}
+test "iny" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC8, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0x01;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_y, 0x02);
+}
+test "iny overflow" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC8, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0xFF;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_y, 0x00);
+}
+
+//
+// decrement
+//
+test "dec" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC6, 0x10, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.mem_write(0x10, 0x01);
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0x00);
+}
+test "dex" {
+    const cpu = test_for_single_run(&[_]u8{ 0xCA, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x01;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_x, 0x00);
+    try std.testing.expect(cpu.status.zero);
+}
+test "dex overflow" {
+    const cpu = test_for_single_run(&[_]u8{ 0xCA, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x00;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_x, 0xFF);
+    try std.testing.expect(!cpu.status.zero);
+}
+test "dey" {
+    const cpu = test_for_single_run(&[_]u8{ 0x88, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0x01;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_y, 0x00);
+    try std.testing.expect(cpu.status.zero);
+}
+test "dey overflow" {
+    const cpu = test_for_single_run(&[_]u8{ 0x88, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0x00;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_y, 0xFF);
+    try std.testing.expect(!cpu.status.zero);
+}
+
+//
+// store
+//
+test "sta" {
+    const cpu = test_for_single_run(&[_]u8{ 0x85, 0x10 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0x55;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
+}
+test "stx" {
+    const cpu = test_for_single_run(&[_]u8{ 0x86, 0x10 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x55;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
+}
+test "sty" {
+    const cpu = test_for_single_run(&[_]u8{ 0x84, 0x10 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0x55;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0x55);
+}
+
+//
+// setting flag
+//
+test "sec" {
+    const cpu = test_for_single_run(&[_]u8{ 0x38, 0x00 }, null);
+    try std.testing.expect(cpu.status.carry);
+}
+test "sed" {
+    const cpu = test_for_single_run(&[_]u8{ 0xF8, 0x00 }, null);
+    try std.testing.expect(cpu.status.decimal);
+}
+test "sei" {
+    const cpu = test_for_single_run(&[_]u8{ 0x78, 0x00 }, null);
+    try std.testing.expect(cpu.status.interrupt);
+}
+
+//
+// clearing flag
+//
+test "clc" {
+    const cpu = test_for_single_run(&[_]u8{ 0x18, 0x00 }, null);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "cld" {
+    const cpu = test_for_single_run(&[_]u8{ 0xD8, 0x00 }, null);
+    try std.testing.expect(!cpu.status.decimal);
+}
+test "cli" {
+    const cpu = test_for_single_run(&[_]u8{ 0x58, 0x00 }, null);
+    try std.testing.expect(!cpu.status.interrupt);
+}
+test "clv" {
+    const cpu = test_for_single_run(&[_]u8{ 0xB8, 0x00 }, null);
+    try std.testing.expect(!cpu.status.overflow);
+}
+
+//
+// branch
+//
+test "bcc jump +5" {
+    var cpu = test_init(&[_]u8{ 0x90, 0x05 });
+    cpu.reset();
+
+    const next = cpu.program_counter + 2;
+    cpu.status.carry = false;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "bcc jump -10" {
+    var cpu = test_init(&[_]u8{ 0x90, @bitCast(@as(i8, -0x05)) });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.carry = false;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next - 0x05, cpu.program_counter);
+}
+test "bcc no jump" {
+    var cpu = test_init(&[_]u8{ 0x90, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.carry = true;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next, cpu.program_counter);
+}
+test "bcs jump" {
+    var cpu = test_init(&[_]u8{ 0xB0, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.carry = true;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "beq jump +5" {
+    var cpu = test_init(&[_]u8{ 0xF0, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.zero = true;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "bne jump +5" {
+    var cpu = test_init(&[_]u8{ 0xD0, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.zero = false;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "bvc jump +5" {
+    var cpu = test_init(&[_]u8{ 0x50, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.overflow = false;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "bvs jump +5" {
+    var cpu = test_init(&[_]u8{ 0x70, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.overflow = true;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "bpl jump +5" {
+    var cpu = test_init(&[_]u8{ 0x10, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.negative = false;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+test "bmi jump +5" {
+    var cpu = test_init(&[_]u8{ 0x30, 0x05 });
+    cpu.reset();
+    const next = cpu.program_counter + 2;
+    cpu.status.negative = true;
+    _ = cpu.single_run();
+    try std.testing.expectEqual(next + 0x05, cpu.program_counter);
+}
+
+//
+// compare
+//
+test "cmp with carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC9, 0x01, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0x01;
+        }
+    }.f);
+    try std.testing.expect(cpu.status.carry);
+    try std.testing.expect(cpu.status.zero);
+}
+test "cmp not carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC9, 0x01, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0x00;
+        }
+    }.f);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "cpx with carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0xE0, 0x01, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x01;
+        }
+    }.f);
+    try std.testing.expect(cpu.status.carry);
+    try std.testing.expect(cpu.status.zero);
+}
+test "cpx not carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0xE0, 0x01, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_x = 0x00;
+        }
+    }.f);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "cpy with carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC0, 0x01, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0x01;
+        }
+    }.f);
+    try std.testing.expect(cpu.status.carry);
+    try std.testing.expect(cpu.status.zero);
+}
+test "cpy not carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0xC0, 0x01, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_y = 0x00;
+        }
+    }.f);
+    try std.testing.expect(!cpu.status.carry);
+}
+
+//
+// Shift
+//
+test "rol" {
+    const cpu = test_for_single_run(&[_]u8{ 0x2A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.status.carry = false;
+            _cpu.register_a = 0b0000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "rol with carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x2A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.status.carry = true;
+            _cpu.register_a = 0b0000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0001_1111);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "rol set carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x2A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.status.carry = false;
+            _cpu.register_a = 0b1000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
+    try std.testing.expect(cpu.status.carry);
+}
+test "ror" {
+    const cpu = test_for_single_run(&[_]u8{ 0x6A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.status.carry = false;
+            _cpu.register_a = 0b1111_0000;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "ror with carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x6A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.status.carry = true;
+            _cpu.register_a = 0b1111_0000;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b1111_1000);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "ror set carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x6A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.status.carry = false;
+            _cpu.register_a = 0b1111_0001;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
+    try std.testing.expect(cpu.status.carry);
+}
+test "asl" {
+    const cpu = test_for_single_run(&[_]u8{ 0x06, 0x10, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.mem_write(0x10, 0b0000_1111);
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0b0001_1110);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "asl set carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x06, 0x10, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.mem_write(0x10, 0b1000_1111);
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0b0001_1110);
+    try std.testing.expect(cpu.status.carry);
+}
+test "asl accumulator" {
+    const cpu = test_for_single_run(&[_]u8{ 0x0A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b0000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "asl accumulator set carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x0A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b1000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0001_1110);
+    try std.testing.expect(cpu.status.carry);
+}
+test "lsr" {
+    const cpu = test_for_single_run(&[_]u8{ 0x46, 0x10, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.mem_write(0x10, 0b1111_0000);
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0b0111_1000);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "lsr set carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x46, 0x10, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.mem_write(0x10, 0b1111_0001);
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.mem_read(0x10), 0b0111_1000);
+    try std.testing.expect(cpu.status.carry);
+}
+test "lsr accumulator" {
+    const cpu = test_for_single_run(&[_]u8{ 0x4A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b1111_0000;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
+    try std.testing.expect(!cpu.status.carry);
+}
+test "lsr accumulator set carry" {
+    const cpu = test_for_single_run(&[_]u8{ 0x4A, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b1111_0001;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0111_1000);
+    try std.testing.expect(cpu.status.carry);
+}
+
+//
+// bit operation
+//
+test "ora" {
+    const cpu = test_for_single_run(&[_]u8{ 0x09, 0b1000_0000, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b0000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b1000_1111);
+}
+test "andexec" {
+    const cpu = test_for_single_run(&[_]u8{ 0x29, 0b1000_0000, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b1000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b1000_0000);
+}
+test "eor" {
+    const cpu = test_for_single_run(&[_]u8{ 0x49, 0b1000_0000, 0x00 }, struct {
+        fn f(_cpu: *CPU) void {
+            _cpu.register_a = 0b1000_1111;
+        }
+    }.f);
+    try std.testing.expectEqual(cpu.register_a, 0b0000_1111);
 }
