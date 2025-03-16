@@ -1,4 +1,4 @@
-const sdl = @cImport(@cInclude("SDL2/SDL.h"));
+const sdl = @cImport(@cInclude("SDL3/SDL.h"));
 
 pub const Color = struct {
     raw: sdl.SDL_Color,

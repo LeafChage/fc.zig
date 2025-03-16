@@ -1,5 +1,5 @@
 const std = @import("std");
-const sdl = @cImport(@cInclude("SDL2/SDL.h"));
+const sdl = @cImport(@cInclude("SDL3/SDL.h"));
 const mysdl = @import("./sdl.zig");
 const CPU = @import("./cpu.zig").CPU;
 const CPUCallback = @import("./cpu.zig").CPUCallback;
@@ -29,23 +29,28 @@ const game_code = [_]u8{
 };
 
 pub fn main() !void {
-    if (sdl.SDL_Init(sdl.SDL_INIT_EVERYTHING) != 0) {
+    if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
         sdl.SDL_Log("Unable to initialize SDL: %s", sdl.SDL_GetError());
         return error.SDLInitializationFailed;
     }
     defer sdl.SDL_Quit();
 
-    const window = sdl.SDL_CreateWindow("Game", sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED, 32 * 10, 32 * 10, 0) orelse {
+    const window = sdl.SDL_CreateWindow("Game", 32 * 10, 32 * 10, 0) orelse {
         sdl.SDL_Log("Unable to initialize window: %s", sdl.SDL_GetError());
         return error.SDLInitializationFailed;
     };
     defer sdl.SDL_DestroyWindow(window);
 
-    const renderer = sdl.SDL_CreateRenderer(window, -1, sdl.SDL_RENDERER_ACCELERATED) orelse {
+    const renderer = sdl.SDL_CreateRenderer(window, null) orelse {
         sdl.SDL_Log("Unable to initialize renderer: %s", sdl.SDL_GetError());
         return error.SDLInitializationFailed;
     };
+    if (!sdl.SDL_SetRenderScale(renderer, 10, 10)) {
+        sdl.SDL_Log("Unable to initialize renderer: %s", sdl.SDL_GetError());
+        return error.SDLInitializationFailed;
+    }
     defer sdl.SDL_DestroyRenderer(renderer);
+
     const texture = sdl.SDL_CreateTexture(renderer, sdl.SDL_PIXELFORMAT_RGB24, sdl.SDL_TEXTUREACCESS_STREAMING, 32, 32) orelse {
         sdl.SDL_Log("Unable to initialize renderer: %s", sdl.SDL_GetError());
         return error.SDLInitializationFailed;
@@ -74,10 +79,10 @@ pub fn main() !void {
 
             cpu.mem_write(0xFE, std.crypto.random.intRangeAtMost(u8, 1, 16));
             if (read_screen_state(cpu, &self.state)) {
-                if (sdl.SDL_UpdateTexture(self.texture, null, &self.state, 32 * 3) == 0 and
-                    sdl.SDL_RenderCopy(self.renderer, self.texture, null, null) == 0)
+                if (sdl.SDL_UpdateTexture(self.texture, null, &self.state, 32 * 3) and
+                    sdl.SDL_RenderTexture(self.renderer, self.texture, null, null))
                 {
-                    sdl.SDL_RenderPresent(self.renderer);
+                    _ = sdl.SDL_RenderPresent(self.renderer);
                 }
             }
             std.time.sleep(70000);
@@ -96,30 +101,30 @@ pub fn main() !void {
 
 fn handle_user_input(cpu: *CPU) void {
     var event: sdl.SDL_Event = undefined;
-    if (sdl.SDL_PollEvent(&event) != 0) {
+    if (sdl.SDL_PollEvent(&event)) {
         switch (event.type) {
-            sdl.SDL_QUIT => {
+            sdl.SDL_EVENT_QUIT => {
                 std.process.exit(0);
             },
-            sdl.SDL_KEYDOWN => {
-                switch (event.key.keysym.sym) {
+            sdl.SDL_EVENT_KEY_DOWN => {
+                switch (event.key.key) {
                     sdl.SDLK_ESCAPE => {
                         std.log.debug("keydown escape", .{});
                         std.process.exit(0);
                     },
-                    sdl.SDLK_w => {
+                    sdl.SDLK_W => {
                         std.log.debug("keydown w", .{});
                         cpu.mem_write(0xff, 0x77);
                     },
-                    sdl.SDLK_s => {
+                    sdl.SDLK_S => {
                         std.log.debug("keydown s", .{});
                         cpu.mem_write(0xff, 0x73);
                     },
-                    sdl.SDLK_a => {
+                    sdl.SDLK_A => {
                         std.log.debug("keydown a", .{});
                         cpu.mem_write(0xff, 0x61);
                     },
-                    sdl.SDLK_d => {
+                    sdl.SDLK_D => {
                         std.log.debug("keydown d", .{});
                         cpu.mem_write(0xff, 0x64);
                     },
